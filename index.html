@@ -4,415 +4,774 @@
     <meta charset="UTF-8">
     <title>Stellar Trails</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        #info { 
-            position: absolute; top: 20px; left: 20px; color: #fff; 
-            pointer-events: none;
-            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px;
-            border-left: 4px solid #00ffff;
-            max-width: 300px;
+        :root {
+            --font-family-base: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --font-size-xs: 11px;
+            --font-size-sm: 13px;
+            --font-size-md: 14px;
+            --font-size-lg: 16px;
+            --font-size-xl: 28px;
+            --line-height-base: 1.55;
+            --line-height-tight: 1.35;
+
+            --color-bg-page: #000;
+            --color-text-primary: #fff;
+            --color-text-secondary: #ccc;
+            --color-text-muted: #888;
+            --color-text-subtle: #666;
+            --color-accent: #00ffff;
+            --color-accent-strong: rgba(0, 255, 255, 0.9);
+            --color-border-soft: #333;
+            --color-border-medium: rgba(255, 255, 255, 0.14);
+            --color-surface-1: rgba(0, 0, 0, 0.72);
+            --color-surface-2: rgba(0, 0, 0, 0.86);
+            --color-surface-3: rgba(0, 0, 0, 0.93);
+            --color-track: #333;
+
+            --space-1: 5px;
+            --space-2: 8px;
+            --space-3: 10px;
+            --space-4: 12px;
+            --space-5: 15px;
+            --space-6: 20px;
+            --space-7: 25px;
+            --space-8: 30px;
+
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            --radius-pill: 999px;
+
+            --shadow-panel: 0 6px 28px rgba(0, 255, 255, 0.12);
+            --shadow-panel-strong: 0 0 40px rgba(0, 255, 255, 0.28), inset 0 0 60px rgba(0, 255, 255, 0.05);
+            --shadow-btn-hover: 0 4px 14px rgba(0, 255, 255, 0.16);
+            --focus-ring: 0 0 0 2px rgba(0, 0, 0, 0.9), 0 0 0 4px rgba(0, 255, 255, 0.52);
+
+            --dur-fast: 0.18s;
+            --dur-mid: 0.26s;
+            --ease-standard: cubic-bezier(0.2, 0, 0.2, 1);
+            --ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
         }
-        
-        #info h3 { margin: 0 0 10px 0; color: #00ffff; font-size: 16px; }
-        #info p { margin: 5px 0; font-size: 13px; color: #ccc; }
-        
-        /* 控制面板 */
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: var(--color-bg-page);
+            color: var(--color-text-primary);
+            font-family: var(--font-family-base);
+            line-height: var(--line-height-base);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+        #info,
+        #controls,
+        #info-panel {
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+        }
+
+        #info {
+            position: absolute;
+            top: var(--space-6);
+            left: var(--space-6);
+            color: var(--color-text-primary);
+            pointer-events: none;
+            background: var(--color-surface-1);
+            padding: var(--space-5);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border-medium);
+            border-left: 4px solid var(--color-accent);
+            box-shadow: var(--shadow-panel);
+            max-width: 320px;
+            z-index: 90;
+        }
+
+        #info h3 {
+            margin: 0 0 var(--space-3) 0;
+            color: var(--color-accent);
+            font-size: var(--font-size-lg);
+            font-weight: 700;
+            line-height: var(--line-height-tight);
+            letter-spacing: 0.2px;
+        }
+
+        #info p {
+            margin: var(--space-1) 0;
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+            line-height: var(--line-height-base);
+        }
+
         #controls {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.85);
-            padding: 20px;
-            border-radius: 12px;
-            color: #fff;
-            width: 280px;
-            border: 1px solid #333;
-            box-shadow: 0 4px 20px rgba(0,255,255,0.1);
-            transition: all 0.3s ease;
+            top: var(--space-6);
+            right: var(--space-6);
+            background: var(--color-surface-2);
+            padding: var(--space-6);
+            border-radius: var(--radius-xl);
+            color: var(--color-text-primary);
+            width: 300px;
+            border: 1px solid var(--color-border-medium);
+            box-shadow: var(--shadow-panel);
+            transition: width var(--dur-mid) var(--ease-standard), padding var(--dur-mid) var(--ease-standard), box-shadow var(--dur-mid) var(--ease-standard), border-color var(--dur-mid) var(--ease-standard);
             max-height: 90vh;
             overflow-y: auto;
+            z-index: 100;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0, 255, 255, 0.32) rgba(0, 0, 0, 0.3);
         }
-        
+
         #controls.collapsed {
             width: auto;
-            padding: 10px;
+            padding: var(--space-3);
             min-width: 45px;
             max-width: 45px;
             overflow: hidden;
-            right: 20px;
+            right: var(--space-6);
         }
-        
+
         #controls.collapsed .control-group {
             display: none;
         }
-        
+
         #controls.collapsed::-webkit-scrollbar {
             display: none;
         }
-        
-        /* 自定义滚动条样式 */
+
         #controls::-webkit-scrollbar {
-            width: 8px;
+            width: var(--space-2);
         }
-        
+
         #controls::-webkit-scrollbar-track {
             background: rgba(0, 0, 0, 0.3);
-            border-radius: 4px;
+            border-radius: var(--radius-md);
         }
-        
+
         #controls::-webkit-scrollbar-thumb {
-            background: rgba(0, 255, 255, 0.3);
-            border-radius: 4px;
-            transition: background 0.3s;
+            background: rgba(0, 255, 255, 0.32);
+            border-radius: var(--radius-md);
+            transition: background-color var(--dur-fast) var(--ease-standard);
         }
-        
+
         #controls::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 255, 255, 0.5);
+            background: rgba(0, 255, 255, 0.55);
         }
-        
-        /* Firefox 滚动条样式 */
-        #controls {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(0, 255, 255, 0.3) rgba(0, 0, 0, 0.3);
-        }
-        
+
         #controls h3 {
-            margin: 0 10px 15px 0;
-            color: #00ffff;
-            font-size: 16px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 10px;
+            margin: 0 var(--space-3) var(--space-5) 0;
+            color: var(--color-accent);
+            font-size: var(--font-size-lg);
+            font-weight: 700;
+            border-bottom: 1px solid var(--color-border-soft);
+            padding-bottom: var(--space-3);
+            line-height: var(--line-height-tight);
             flex: 1;
         }
-        
-        /* 控制面板头部 */
+
         .controls-header {
             display: flex;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: var(--space-5);
             position: relative;
+            gap: var(--space-2);
         }
-        
-        /* 折叠状态下的头部 */
+
         #controls.collapsed .controls-header {
             margin-bottom: 0;
         }
-        
+
         #controls.collapsed .controls-header h3,
         #controls.collapsed .controls-header #lang-toggle {
             display: none;
         }
-        
+
         .control-group {
-            margin-bottom: 15px;
+            margin-bottom: var(--space-5);
         }
-        
+
         .control-group label {
             display: block;
-            margin-bottom: 5px;
-            font-size: 13px;
-            color: #aaa;
+            margin-bottom: var(--space-1);
+            font-size: var(--font-size-sm);
+            color: #b3b3b3;
+            line-height: var(--line-height-base);
         }
-        
+
         .control-group .value {
-            color: #00ffff;
-            font-weight: bold;
+            color: var(--color-accent);
+            font-weight: 700;
         }
-        
+
         input[type="range"] {
             width: 100%;
             height: 6px;
             -webkit-appearance: none;
-            background: #333;
-            border-radius: 3px;
+            appearance: none;
+            background: linear-gradient(90deg, rgba(0, 255, 255, 0.32), rgba(0, 255, 255, 0.12));
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: var(--radius-pill);
             outline: none;
+            transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
         }
-        
+
+        input[type="range"]:focus-visible {
+            border-color: var(--color-accent);
+            box-shadow: var(--focus-ring);
+        }
+
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 16px;
             height: 16px;
-            background: #00ffff;
+            border: 2px solid #001a1a;
+            background: var(--color-accent);
             border-radius: 50%;
             cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.45);
+            transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
         }
-        
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 12px rgba(0, 255, 255, 0.58);
+        }
+
+        input[type="range"]::-moz-range-track {
+            height: 6px;
+            background: linear-gradient(90deg, rgba(0, 255, 255, 0.32), rgba(0, 255, 255, 0.12));
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: var(--radius-pill);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #001a1a;
+            background: var(--color-accent);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.45);
+        }
+
         button {
             width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            background: linear-gradient(135deg, #00ffff33, #00ffff11);
-            border: 1px solid #00ffff;
-            color: #00ffff;
-            border-radius: 6px;
+            padding: var(--space-3);
+            margin: var(--space-1) 0;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.07));
+            border: 1px solid rgba(0, 255, 255, 0.78);
+            color: var(--color-accent);
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 13px;
-            transition: all 0.3s;
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
         }
-        
+
         button:hover {
-            background: linear-gradient(135deg, #00ffff55, #00ffff22);
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.33), rgba(0, 255, 255, 0.14));
+            border-color: var(--color-accent);
             transform: translateY(-1px);
+            box-shadow: var(--shadow-btn-hover);
         }
-        
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        button:focus-visible,
+        #lang-toggle:focus-visible,
+        .collapse-btn:focus-visible,
+        #info-panel .close-btn:focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring);
+        }
+
         button.active {
-            background: #00ffff;
-            color: #000;
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: #001111;
         }
-        
+
         .center-planet-btn {
             font-size: 12px;
-            padding: 8px;
+            padding: var(--space-2);
+            line-height: 1.35;
         }
-        
+
         .center-planet-btn.active {
-            background: #00ffff;
-            color: #000;
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: #001111;
+            box-shadow: 0 0 14px rgba(0, 255, 255, 0.35);
         }
-        
+
         .planet-buttons-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 5px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: var(--space-1);
         }
-        
-        /* 折叠按钮 */
+
         .collapse-btn {
-            background: none;
+            background: transparent;
             border: none;
-            color: #00ffff;
+            color: var(--color-accent);
             font-size: 24px;
             cursor: pointer;
             width: auto;
-            padding: 5px 10px;
+            padding: var(--space-1) var(--space-3);
             margin: 0;
-            opacity: 0.7;
-            transition: all 0.3s;
+            opacity: 0.75;
+            transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
             line-height: 1;
             height: auto;
             flex-shrink: 0;
+            box-shadow: none;
         }
-        
+
         .collapse-btn:hover {
             opacity: 1;
-            background: none;
+            color: var(--color-accent-strong);
+            background: transparent;
             transform: none;
+            box-shadow: none;
         }
-        
-        /* 折叠状态下的折叠按钮 */
+
         #controls.collapsed .collapse-btn {
             width: 100%;
             text-align: center;
         }
-        
-        /* 语言切换按钮 */
+
         #lang-toggle {
-            background: linear-gradient(135deg, #00ffff22, #00ffff11);
-            border: 1px solid #00ffff66;
-            color: #00ffff;
-            border-radius: 4px;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.16), rgba(0, 255, 255, 0.08));
+            border: 1px solid rgba(0, 255, 255, 0.45);
+            color: var(--color-accent);
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: all 0.3s;
+            transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
             text-align: center;
             width: auto;
             padding: 6px 12px;
             margin: 0;
-            font-size: 11px;
-            min-width: 70px;
+            font-size: var(--font-size-xs);
+            min-width: 72px;
             flex-shrink: 0;
         }
-        
+
         #lang-toggle:hover {
-            background: linear-gradient(135deg, #00ffff33, #00ffff22);
-            border-color: #00ffff;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.26), rgba(0, 255, 255, 0.14));
+            border-color: var(--color-accent);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-btn-hover);
         }
-        
+
         .checkbox-group {
             display: flex;
             align-items: center;
-            margin: 8px 0;
+            margin: var(--space-2) 0;
         }
-        
+
         .checkbox-group input[type="checkbox"] {
-            margin-right: 10px;
+            margin-right: var(--space-3);
             cursor: pointer;
+            accent-color: var(--color-accent);
         }
-        
+
         .checkbox-group label {
             margin: 0;
             cursor: pointer;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
         }
-        
-        /* 速度指示器 */
+
+        .shortcuts-note {
+            font-size: var(--font-size-xs) !important;
+            color: var(--color-text-subtle) !important;
+            line-height: 1.5;
+        }
+
         #speed-indicator {
             position: absolute;
-            bottom: 20px;
+            bottom: var(--space-6);
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0,0,0,0.7);
-            padding: 10px 20px;
-            border-radius: 20px;
-            color: #00ffff;
-            font-size: 14px;
-            border: 1px solid #333;
+            background: var(--color-surface-1);
+            padding: var(--space-3) var(--space-6);
+            border-radius: var(--radius-pill);
+            color: var(--color-accent);
+            font-size: var(--font-size-md);
+            font-weight: 600;
+            border: 1px solid var(--color-border-medium);
+            box-shadow: var(--shadow-panel);
+            line-height: var(--line-height-tight);
+            z-index: 80;
+            max-width: min(82vw, 420px);
+            text-align: center;
         }
-        
+
         #show-info-btn {
             position: absolute;
-            bottom: 70px;
+            bottom: 72px;
             left: 50%;
             transform: translateX(-50%);
-            background: linear-gradient(135deg, #00ffff33, #00ffff11);
-            border: 1px solid #00ffff;
-            color: #00ffff;
-            border-radius: 20px;
-            padding: 10px 25px;
-            font-size: 14px;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.07));
+            border: 1px solid rgba(0, 255, 255, 0.78);
+            color: var(--color-accent);
+            border-radius: var(--radius-pill);
+            padding: var(--space-3) var(--space-7);
+            font-size: var(--font-size-md);
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
             width: auto;
             display: none;
             z-index: 100;
+            max-width: calc(100vw - 32px);
+            white-space: nowrap;
         }
-        
+
         #show-info-btn:hover {
-            background: linear-gradient(135deg, #00ffff55, #00ffff22);
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.33), rgba(0, 255, 255, 0.14));
             transform: translateX(-50%) translateY(-2px);
+            box-shadow: var(--shadow-btn-hover);
         }
-        
-        /* 信息面板 */
+
         #info-panel {
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%) scale(0.9);
-            background: rgba(0,0,0,0.95);
-            padding: 30px;
-            border-radius: 16px;
-            color: #fff;
+            transform: translate(-50%, -50%) scale(0.94);
+            background: var(--color-surface-3);
+            padding: var(--space-8);
+            border-radius: var(--radius-xl);
+            color: var(--color-text-primary);
             width: 380px;
-            border: 2px solid #00ffff;
-            box-shadow: 0 0 40px rgba(0,255,255,0.3), inset 0 0 60px rgba(0,255,255,0.05);
+            max-width: calc(100vw - 32px);
+            border: 1px solid rgba(0, 255, 255, 0.72);
+            box-shadow: var(--shadow-panel-strong);
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: opacity var(--dur-mid) var(--ease-emphasized), visibility var(--dur-mid) var(--ease-emphasized), transform var(--dur-mid) var(--ease-emphasized);
             z-index: 1000;
         }
-        
+
         #info-panel.visible {
             opacity: 1;
             visibility: visible;
             transform: translate(-50%, -50%) scale(1);
         }
-        
+
         #info-panel h2 {
-            margin: 0 0 20px 0;
-            color: #00ffff;
-            font-size: 28px;
+            margin: 0 0 var(--space-6) 0;
+            color: var(--color-accent);
+            font-size: var(--font-size-xl);
             text-align: center;
-            text-shadow: 0 0 10px rgba(0,255,255,0.5);
-            border-bottom: 2px solid #00ffff33;
-            padding-bottom: 15px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.25);
+            padding-bottom: var(--space-5);
+            line-height: var(--line-height-tight);
         }
-        
+
         #info-panel .planet-name-en {
-            font-size: 14px;
-            color: #888;
-            margin-top: -15px;
+            font-size: var(--font-size-md);
+            color: var(--color-text-muted);
+            margin-top: calc(-1 * var(--space-5));
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: var(--space-6);
+            letter-spacing: 0.4px;
         }
-        
+
         #info-panel .info-row {
             display: flex;
             justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #333;
+            gap: var(--space-3);
+            padding: var(--space-3) 0;
+            border-bottom: 1px solid var(--color-border-soft);
         }
-        
+
         #info-panel .info-row:last-child {
             border-bottom: none;
         }
-        
+
         #info-panel .info-label {
-            color: #888;
-            font-size: 13px;
+            color: var(--color-text-muted);
+            font-size: var(--font-size-sm);
+            line-height: var(--line-height-base);
         }
-        
+
         #info-panel .info-value {
-            color: #00ffff;
-            font-size: 14px;
-            font-weight: bold;
+            color: var(--color-accent);
+            font-size: var(--font-size-md);
+            font-weight: 700;
+            line-height: var(--line-height-base);
+            text-align: right;
         }
-        
+
         #info-panel .description {
-            background: rgba(0,255,255,0.05);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 20px;
-            font-size: 14px;
-            line-height: 1.6;
-            color: #ccc;
-            border-left: 3px solid #00ffff;
+            background: rgba(0, 255, 255, 0.06);
+            padding: var(--space-5);
+            border-radius: var(--radius-md);
+            margin-top: var(--space-6);
+            font-size: var(--font-size-md);
+            line-height: 1.65;
+            color: var(--color-text-secondary);
+            border-left: 3px solid var(--color-accent);
         }
-        
+
         #info-panel .close-btn {
             position: absolute;
-            top: 15px;
-            right: 15px;
-            background: none;
+            top: var(--space-5);
+            right: var(--space-5);
+            background: transparent;
             border: none;
-            color: #00ffff;
+            color: var(--color-accent);
             font-size: 24px;
             cursor: pointer;
             width: auto;
-            padding: 5px 10px;
+            padding: var(--space-1) var(--space-3);
             margin: 0;
-            opacity: 0.7;
-            transition: opacity 0.3s;
+            opacity: 0.74;
+            transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
         }
-        
+
         #info-panel .close-btn:hover {
             opacity: 1;
-            background: none;
+            color: var(--color-accent-strong);
+            background: transparent;
             transform: none;
+            box-shadow: none;
         }
-        
+
         #info-panel .actions {
-            margin-top: 20px;
+            margin-top: var(--space-6);
             display: flex;
-            gap: 10px;
+            gap: var(--space-3);
         }
-        
+
         #info-panel .actions button {
             flex: 1;
-            padding: 12px;
+            padding: var(--space-4);
             margin: 0;
         }
-        
-        /* 加载指示器 */
+
         #loading {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: #00ffff;
+            color: var(--color-accent);
             font-size: 24px;
             text-align: center;
         }
-        
+
         #loading .spinner {
             width: 50px;
             height: 50px;
-            border: 3px solid #00ffff33;
-            border-top-color: #00ffff;
+            border: 3px solid rgba(0, 255, 255, 0.2);
+            border-top-color: var(--color-accent);
             border-radius: 50%;
-            margin: 0 auto 20px;
+            margin: 0 auto var(--space-6);
             animation: spin 1s linear infinite;
         }
-        
+
+        @media (max-width: 1024px) {
+            #info {
+                max-width: min(42vw, 320px);
+                top: var(--space-5);
+                left: var(--space-5);
+                padding: var(--space-4);
+            }
+
+            #controls {
+                width: 280px;
+                top: var(--space-5);
+                right: var(--space-5);
+                padding: var(--space-5);
+            }
+
+            #info-panel {
+                width: min(420px, calc(100vw - 40px));
+                padding: var(--space-7);
+            }
+
+            #speed-indicator {
+                max-width: min(76vw, 380px);
+            }
+        }
+
+        @media (max-width: 768px) {
+            #info {
+                max-width: calc(100vw - 32px);
+                left: var(--space-4);
+                right: var(--space-4);
+                top: var(--space-4);
+                padding: var(--space-4);
+            }
+
+            #controls {
+                width: min(340px, calc(100vw - 32px));
+                right: var(--space-4);
+                top: 170px;
+                max-height: calc(100vh - 260px);
+                padding: var(--space-4);
+            }
+
+            #controls.collapsed {
+                right: var(--space-4);
+                top: 170px;
+            }
+
+            #controls h3,
+            #info h3 {
+                font-size: 15px;
+            }
+
+            .control-group label,
+            button,
+            #speed-indicator,
+            #show-info-btn,
+            #info-panel .info-label,
+            #info-panel .info-value,
+            #info-panel .description {
+                font-size: var(--font-size-sm);
+            }
+
+            .planet-buttons-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: var(--space-2);
+            }
+
+            #show-info-btn {
+                bottom: 74px;
+                padding: var(--space-3) var(--space-6);
+            }
+
+            #speed-indicator {
+                bottom: var(--space-4);
+                padding: var(--space-2) var(--space-5);
+            }
+
+            #info-panel {
+                width: calc(100vw - 24px);
+                padding: var(--space-6);
+            }
+
+            #info-panel h2 {
+                font-size: 22px;
+                margin-bottom: var(--space-5);
+                padding-bottom: var(--space-4);
+            }
+        }
+
+        @media (max-width: 480px) {
+            #info {
+                top: var(--space-3);
+                left: var(--space-3);
+                right: var(--space-3);
+                padding: var(--space-3);
+            }
+
+            #info p {
+                margin: 4px 0;
+                font-size: 12px;
+            }
+
+            #controls {
+                top: 160px;
+                right: var(--space-3);
+                width: calc(100vw - 24px);
+                max-height: calc(100vh - 240px);
+                padding: var(--space-3);
+                border-radius: var(--radius-lg);
+            }
+
+            #controls.collapsed {
+                top: 160px;
+                right: var(--space-3);
+            }
+
+            .controls-header {
+                margin-bottom: var(--space-4);
+            }
+
+            #lang-toggle {
+                min-width: 64px;
+                padding: 5px 9px;
+                font-size: 10px;
+            }
+
+            .planet-buttons-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .center-planet-btn {
+                font-size: 11px;
+            }
+
+            #show-info-btn {
+                bottom: 70px;
+                max-width: calc(100vw - 20px);
+                font-size: 12px;
+                padding: 9px 14px;
+            }
+
+            #speed-indicator {
+                bottom: var(--space-3);
+                max-width: calc(100vw - 20px);
+                font-size: 12px;
+                padding: 8px 12px;
+            }
+
+            #info-panel {
+                width: calc(100vw - 16px);
+                padding: var(--space-5);
+                border-radius: var(--radius-lg);
+            }
+
+            #info-panel h2 {
+                font-size: 20px;
+            }
+
+            #info-panel .planet-name-en {
+                font-size: var(--font-size-sm);
+            }
+
+            #info-panel .actions {
+                flex-direction: column;
+            }
+
+            #info-panel .actions button {
+                width: 100%;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+
+            #info-panel {
+                transform: translate(-50%, -50%);
+            }
+
+            #info-panel.visible {
+                transform: translate(-50%, -50%);
+            }
+
+            #show-info-btn:hover,
+            button:hover,
+            #lang-toggle:hover {
+                transform: none;
+                box-shadow: none;
+            }
+        }
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -492,7 +851,7 @@
         </div>
         
         <div class="control-group">
-            <label style="font-size: 11px; color: #666;" data-i18n="shortcuts">Shortcuts: Space=Pause 1-5=Views R=Reset ESC=Close</label>
+            <label class="shortcuts-note" data-i18n="shortcuts">Shortcuts: Space=Pause 1-5=Views R=Reset ESC=Close</label>
         </div>
     </div>
 
