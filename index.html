@@ -1128,9 +1128,14 @@ trailMaxPoints: 600,
         sunLight.shadow.camera.far = 5000;
         scene.add(sunLight);
 
-        // 环境光（模拟星际背景散射）- 增强亮度
-        const ambientLight = new THREE.AmbientLight(0x555555, 1.0);
+        // 环境光（模拟星际背景散射）- 提升暗部可见性
+        const ambientLight = new THREE.AmbientLight(0x6f7480, 1.35);
         scene.add(ambientLight);
+
+        // 辅助补光（避免背光面过暗）
+        const fillLight = new THREE.DirectionalLight(0x9db9ff, 0.35);
+        fillLight.position.set(300, 180, -220);
+        scene.add(fillLight);
 
         // --- 3. 星空背景 ---
         function createStarfield() {
@@ -1279,7 +1284,7 @@ trailMaxPoints: 600,
             canvas.width = 512;
             canvas.height = 256;
             const ctx = canvas.getContext('2d');
-            
+
             // 基础颜色
             const gradient = ctx.createRadialGradient(
                 canvas.width / 2, canvas.height / 2, 0,
@@ -1289,10 +1294,10 @@ trailMaxPoints: 600,
             gradient.addColorStop(0.3, '#FFFF00');
             gradient.addColorStop(0.6, '#FFAA00');
             gradient.addColorStop(1, '#FF6600');
-            
+
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+
             // 添加太阳黑子
             for (let i = 0; i < 15; i++) {
                 const x = Math.random() * canvas.width;
@@ -1304,9 +1309,56 @@ trailMaxPoints: 600,
                 ctx.ellipse(x, y, size, size * 0.6, 0, 0, Math.PI * 2);
                 ctx.fill();
             }
-            
+
             ctx.globalAlpha = 1.0;
             return new THREE.CanvasTexture(canvas);
+        }
+
+        function numberToHexColor(value) {
+            return `#${value.toString(16).padStart(6, '0')}`;
+        }
+
+        function createRingTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0.0, 'rgba(210, 180, 120, 0)');
+            gradient.addColorStop(0.15, 'rgba(220, 195, 140, 0.35)');
+            gradient.addColorStop(0.5, 'rgba(244, 224, 170, 0.78)');
+            gradient.addColorStop(0.82, 'rgba(208, 180, 125, 0.3)');
+            gradient.addColorStop(1.0, 'rgba(180, 150, 100, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < 240; i++) {
+                const x = Math.random() * canvas.width;
+                const w = Math.random() * 6 + 1;
+                const alpha = 0.08 + Math.random() * 0.18;
+                ctx.fillStyle = `rgba(255, 245, 210, ${alpha})`;
+                ctx.fillRect(x, 0, w, canvas.height);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            return texture;
+        }
+
+        function getPlanetVisualPreset(nameEn) {
+            const presets = {
+                Mercury: { emissiveIntensity: 0.32, shininess: 34, specular: 0x888888 },
+                Venus: { emissiveIntensity: 0.4, shininess: 56, specular: 0xb3a07a, atmosphere: { color: 0xffd9a8, opacity: 0.26, scale: 1.06 } },
+                Earth: { emissiveIntensity: 0.42, shininess: 88, specular: 0xb9ddff, atmosphere: { color: 0x66ccff, opacity: 0.24, scale: 1.08 }, cloud: { opacity: 0.3, scale: 1.03 } },
+                Mars: { emissiveIntensity: 0.36, shininess: 42, specular: 0xbb8d6a },
+                Jupiter: { emissiveIntensity: 0.4, shininess: 50, specular: 0xc6a588 },
+                Saturn: { emissiveIntensity: 0.38, shininess: 50, specular: 0xd7bb88 },
+                Uranus: { emissiveIntensity: 0.42, shininess: 62, specular: 0xbce6f0, atmosphere: { color: 0x8ce8ff, opacity: 0.26, scale: 1.06 } },
+                Neptune: { emissiveIntensity: 0.44, shininess: 66, specular: 0x90b7ff, atmosphere: { color: 0x6d8cff, opacity: 0.26, scale: 1.06 } }
+            };
+            return presets[nameEn] || { emissiveIntensity: 0.36, shininess: 48, specular: 0x999999 };
         }
 
         // --- 4. 行星数据（增强版） ---
@@ -1315,12 +1367,12 @@ trailMaxPoints: 600,
         
         // 真实天文数据（相对比例）
         const planetsData = [
-            { 
-                name: "水星", 
+            {
+                name: "水星",
                 nameEn: "Mercury",
-                size: 1.5, 
-                distance: 50, 
-                speed: 0.008, 
+                size: 1.5,
+                distance: 50,
+                speed: 0.008,
                 color: 0xAAAAAA,
                 secondaryColor: 0x888888,
                 emissive: 0x222222,
@@ -1330,12 +1382,12 @@ trailMaxPoints: 600,
                 texturePattern: 'craters',
                 description: '太阳系最小的行星，表面布满陨石坑'
             },
-            { 
-                name: "金星", 
+            {
+                name: "金星",
                 nameEn: "Venus",
-                size: 2.2, 
-                distance: 80, 
-                speed: 0.003, 
+                size: 2.2,
+                distance: 80,
+                speed: 0.003,
                 color: 0xE3BB76,
                 secondaryColor: 0xD4A84A,
                 emissive: 0x332211,
@@ -1345,12 +1397,12 @@ trailMaxPoints: 600,
                 texturePattern: 'noise',
                 description: '太阳系最热的行星，表面温度可达460°C'
             },
-            { 
-                name: "地球", 
+            {
+                name: "地球",
                 nameEn: "Earth",
-                size: 2.5, 
-                distance: 110, 
-                speed: 0.002, 
+                size: 2.5,
+                distance: 110,
+                speed: 0.002,
                 color: 0x2233FF,
                 secondaryColor: 0x228822,
                 emissive: 0x001122,
@@ -1361,12 +1413,12 @@ trailMaxPoints: 600,
                 texturePattern: 'continents',
                 description: '我们的家园，唯一已知存在生命的行星'
             },
-            { 
-                name: "火星", 
+            {
+                name: "火星",
                 nameEn: "Mars",
-                size: 1.8, 
-                distance: 140, 
-                speed: 0.0016, 
+                size: 1.8,
+                distance: 140,
+                speed: 0.0016,
                 color: 0xFF4500,
                 secondaryColor: 0xCC3300,
                 emissive: 0x331100,
@@ -1376,12 +1428,12 @@ trailMaxPoints: 600,
                 texturePattern: 'craters',
                 description: '红色星球，表面有巨大的火山和峡谷'
             },
-            { 
-                name: "木星", 
+            {
+                name: "木星",
                 nameEn: "Jupiter",
-                size: 8.0, 
-                distance: 220, 
-                speed: 0.0008, 
+                size: 8.0,
+                distance: 220,
+                speed: 0.0008,
                 color: 0xD39C7E,
                 secondaryColor: 0xC4906E,
                 emissive: 0x332211,
@@ -1391,12 +1443,12 @@ trailMaxPoints: 600,
                 texturePattern: 'storms',
                 description: '太阳系最大的行星，拥有著名的大红斑'
             },
-            { 
-                name: "土星", 
+            {
+                name: "土星",
                 nameEn: "Saturn",
-                size: 7.0, 
-                distance: 300, 
-                speed: 0.0006, 
+                size: 7.0,
+                distance: 300,
+                speed: 0.0006,
                 color: 0xF4D03F,
                 secondaryColor: 0xE4C02F,
                 emissive: 0x332200,
@@ -1407,12 +1459,12 @@ trailMaxPoints: 600,
                 texturePattern: 'bands',
                 description: '拥有最美丽的行星环系统'
             },
-            { 
-                name: "天王星", 
+            {
+                name: "天王星",
                 nameEn: "Uranus",
-                size: 4.5, 
-                distance: 380, 
-                speed: 0.0004, 
+                size: 4.5,
+                distance: 380,
+                speed: 0.0004,
                 color: 0x4FD8EB,
                 secondaryColor: 0x3FC8DB,
                 emissive: 0x002233,
@@ -1422,12 +1474,12 @@ trailMaxPoints: 600,
                 texturePattern: 'noise',
                 description: '侧躺着旋转的冰巨星'
             },
-            { 
-                name: "海王星", 
+            {
+                name: "海王星",
                 nameEn: "Neptune",
-                size: 4.3, 
-                distance: 450, 
-                speed: 0.0003, 
+                size: 4.3,
+                distance: 450,
+                speed: 0.0003,
                 color: 0x4169E1,
                 secondaryColor: 0x3159D1,
                 emissive: 0x001133,
@@ -1476,6 +1528,8 @@ trailMaxPoints: 600,
         const staticOrbits = new THREE.Group();
         staticOrbits.visible = false; // 隐藏静态轨道，只显示拖影
         worldGroup.add(staticOrbits);
+
+        const saturnRingTexture = createRingTexture();
 
         // 创建标签
         function createLabel(planet, position) {
@@ -1537,13 +1591,20 @@ trailMaxPoints: 600,
             orbit.rotation.x = Math.PI / 2;
             staticOrbits.add(orbit);
 
-            // 创建行星材质（纯色填充，高亮度）
+            // 创建行星材质（增强纹理与分层）
+            const visualPreset = getPlanetVisualPreset(data.nameEn);
+            const texture = createPlanetTexture(numberToHexColor(data.color), numberToHexColor(data.secondaryColor), data.texturePattern);
+
             const planetMat = new THREE.MeshPhongMaterial({
                 color: data.color,
-                emissive: data.color,
-                emissiveIntensity: 0.5,
-                shininess: 100,
-                specular: 0xffffff
+                map: texture,
+                emissive: data.emissive,
+                emissiveIntensity: visualPreset.emissiveIntensity,
+                shininess: visualPreset.shininess,
+                specular: visualPreset.specular,
+                transparent: true,
+                opacity: 1,
+                toneMapped: false
             });
 
             // 创建行星
@@ -1554,17 +1615,58 @@ trailMaxPoints: 600,
             mesh.castShadow = true;
             mesh.receiveShadow = true;
 
+            // 大气层（部分行星）
+            if (visualPreset.atmosphere) {
+                const atmosphereGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale, 48, 48);
+                const atmosphereMaterial = new THREE.MeshPhongMaterial({
+                    color: visualPreset.atmosphere.color,
+                    transparent: true,
+                    opacity: visualPreset.atmosphere.opacity,
+                    emissive: visualPreset.atmosphere.color,
+                    emissiveIntensity: 0.08,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+                mesh.add(atmosphere);
+            }
+
+            // 云层（地球）
+            if (visualPreset.cloud) {
+                const cloudTexture = createPlanetTexture('#cfefff', '#ffffff', 'noise');
+                const cloudMaterial = new THREE.MeshPhongMaterial({
+                    map: cloudTexture,
+                    transparent: true,
+                    opacity: visualPreset.cloud.opacity,
+                    depthWrite: false,
+                    shininess: 18,
+                    specular: 0xffffff
+                });
+                const cloudLayer = new THREE.Mesh(
+                    new THREE.SphereGeometry(data.size * visualPreset.cloud.scale, 40, 40),
+                    cloudMaterial
+                );
+                cloudLayer.userData.isCloudLayer = true;
+                mesh.add(cloudLayer);
+            }
+
             // 土星环
             if (data.hasRings) {
-                const ringGeometry = new THREE.RingGeometry(data.size * 1.4, data.size * 2.2, 64);
-                const ringMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xC4A35A,
+                const ringGeometry = new THREE.RingGeometry(data.size * 1.35, data.size * 2.35, 96);
+                const ringMaterial = new THREE.MeshPhongMaterial({
+                    color: 0xE8D7A5,
+                    map: saturnRingTexture,
                     side: THREE.DoubleSide,
                     transparent: true,
-                    opacity: 0.7
+                    opacity: 0.82,
+                    emissive: 0x2d2416,
+                    emissiveIntensity: 0.12,
+                    shininess: 18,
+                    specular: 0xb59a67,
+                    depthWrite: false
                 });
                 const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-                ring.rotation.x = Math.PI / 2.2;
+                ring.rotation.x = Math.PI / 2.25;
                 mesh.add(ring);
             }
 
@@ -2105,9 +2207,16 @@ trailMaxPoints: 600,
                     p.angle += p.baseSpeed * config.timeScale;
                     p.mesh.position.x = Math.cos(p.angle) * p.distance;
                     p.mesh.position.z = Math.sin(p.angle) * p.distance;
-                    
+
                     // 行星自转
                     p.mesh.rotation.y += 0.01 * config.rotationScale;
+
+                    // 云层缓慢漂移（若存在）
+                    p.mesh.children.forEach(child => {
+                        if (child.userData && child.userData.isCloudLayer) {
+                            child.rotation.y += 0.003 * config.rotationScale;
+                        }
+                    });
                 });
 
                 // 太阳自转
