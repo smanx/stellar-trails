@@ -139,6 +139,11 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 ### Display Options
 - **Show Trails**: Toggle trail visibility
 - **Show Labels**: Toggle planet name labels (supports bilingual switching)
+- **Show Performance Stats**: Show live FPS / frame time / render calls / triangles / geometries
+
+### Quality Mode
+- **Performance** (default): Lower geometry tessellation + 1024 shadow map for smoother frame pacing
+- **High**: Higher tessellation + 2048 shadow map for better visual fidelity
 
 ### Center Planet
 - 9 buttons corresponding to Sun and 8 planets
@@ -176,9 +181,9 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 
 ### Trail System
 - Based on relative coordinate calculations
-- Trail length automatically adjusts based on celestial body distance
-- Uses TubeGeometry for variable thickness
-- Automatically regenerates when switching reference centers
+- Uses fixed-capacity ring-buffer sampling to reduce allocation and array churn
+- Rebuilds TubeGeometry only when a new sample is accepted (time/distance threshold)
+- Automatically regenerates when switching reference centers or quality mode
 
 ### Camera System
 - Smooth animation transitions
@@ -203,11 +208,22 @@ Each planet features unique procedurally generated textures:
 - All UI elements dynamically switch languages
 - Planet labels update in real-time when language changes
 
-## 📝 Notes
+## ✅ Performance Verification
 
-1. **Browser Compatibility**: Requires modern browsers with ES Modules and WebGL support
-2. **Performance**: High trail counts may affect performance; adjust trail length as needed
-3. **Offline Usage**: All dependencies are localized for complete offline operation
+1. Run locally:
+   - `python3 -m http.server 8000` or `npx http-server -p 8000`
+   - Open `http://localhost:8000`
+2. Regression scenarios:
+   - Switch center: Sun / Earth / Jupiter
+   - Toggle trails and quickly adjust trail length/thickness
+   - Toggle info panel and switch view presets
+3. Compare before/after (Chrome DevTools Performance, 30-60s):
+   - Average FPS, P95 frame time, GC frequency
+   - `renderer.info.render.calls`, `renderer.info.render.triangles`, `renderer.info.memory.geometries`
+4. Suggested acceptance:
+   - Noticeable P95 frame-time improvement with trails enabled and long length
+   - No obvious trail flicker/break or interaction regressions
+   - Stable geometry/memory indicators without continuous growth
 
 ## 📄 License
 

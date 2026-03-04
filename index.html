@@ -929,6 +929,18 @@
                 <input type="checkbox" id="show-labels" checked>
                 <label for="show-labels" data-i18n="showLabels">Show Labels</label>
             </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="show-perf-stats">
+                <label for="show-perf-stats" data-i18n="showPerfStats">Show Performance Stats</label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label for="quality-mode" data-i18n="qualityMode">Quality Mode</label>
+            <select id="quality-mode">
+                <option value="performance" data-i18n="qualityPerformance">Performance</option>
+                <option value="high" data-i18n="qualityHigh">High</option>
+            </select>
         </div>
         
         <div class="control-group">
@@ -961,6 +973,7 @@
     </div>
 
     <div id="speed-indicator"><span data-i18n="speed">Speed</span>: 1.0x</div>
+    <div id="perf-stats" style="position:absolute;left:20px;bottom:20px;z-index:95;background:rgba(0,0,0,0.72);border:1px solid rgba(0,255,255,0.35);color:#9efcff;padding:8px 10px;border-radius:8px;font-size:12px;font-family:Consolas,monospace;line-height:1.4;display:none;pointer-events:none;white-space:pre;">FPS: --\nFrame: -- ms\nCalls: --\nTris: --\nGeoms: --</div>
     
     <button id="show-info-btn" data-i18n="showDetails">📋 Show Details</button>
     
@@ -1032,6 +1045,10 @@
                 displayOptions: 'Display Options',
                 showTrails: 'Show Trails',
                 showLabels: 'Show Labels',
+                showPerfStats: 'Show Performance Stats',
+                qualityMode: 'Quality Mode',
+                qualityPerformance: 'Performance',
+                qualityHigh: 'High',
                 centerPlanet: 'Center Planet',
                 viewPresets: 'View Presets',
                 topView: '👁️ Top View',
@@ -1085,6 +1102,10 @@
                 displayOptions: '显示选项',
                 showTrails: '显示拖影',
                 showLabels: '显示标签',
+                showPerfStats: '显示性能统计',
+                qualityMode: '画质模式',
+                qualityPerformance: '性能优先',
+                qualityHigh: '高质量',
                 centerPlanet: '中心星球',
                 viewPresets: '视角预设',
                 topView: '👁️ 俯视',
@@ -1213,9 +1234,42 @@
             showOrbits: true,
             showTrails: true,
             showLabels: true,
-trailMaxPoints: 600,
+            showPerfStats: false,
+            qualityMode: 'performance',
+            trailMaxPoints: 600,
             realisticScale: false,
-            orbitThickness: 1.0
+            orbitThickness: 1.0,
+            trailSampleIntervalMs: 50,
+            trailSampleMinDistance: 0.9,
+            labelUpdateIntervalFrames: 2,
+            panelAngleUpdateIntervalMs: 120,
+            panelAngleDeltaThreshold: 0.25,
+            metricsUpdateIntervalMs: 500,
+            shadowMapSize: {
+                performance: 1024,
+                high: 2048
+            },
+            sphereSegments: {
+                performance: {
+                    sun: 40,
+                    sunGlow: 40,
+                    planet: 36,
+                    atmosphere: 28,
+                    cloud: 28
+                },
+                high: {
+                    sun: 64,
+                    sunGlow: 64,
+                    planet: 64,
+                    atmosphere: 48,
+                    cloud: 40
+                }
+            },
+            trailTubeRadialSegments: {
+                performance: 6,
+                high: 8
+            },
+            perfLogToConsole: false
         };
 
         // --- 1. 基础场景 ---
@@ -1226,6 +1280,7 @@ trailMaxPoints: 600,
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.autoUpdate = true;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.16;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1243,13 +1298,65 @@ trailMaxPoints: 600,
         controls.maxDistance = 2000;
         const simulationClock = new THREE.Clock();
 
+        function getQualityProfile() {
+            return config.sphereSegments[config.qualityMode] || config.sphereSegments.performance;
+        }
+
+        function rebuildQualityGeometries() {
+            const profile = getQualityProfile();
+
+            if (sunObj.mesh && sunObj.mesh.geometry) {
+                sunObj.mesh.geometry.dispose();
+                sunObj.mesh.geometry = new THREE.SphereGeometry(20, profile.sun, profile.sun);
+            }
+
+            if (sunObj.sunGlow && sunObj.sunGlow.geometry) {
+                sunObj.sunGlow.geometry.dispose();
+                sunObj.sunGlow.geometry = new THREE.SphereGeometry(25, profile.sunGlow, profile.sunGlow);
+            }
+
+            planets.forEach(p => {
+                if (p.mesh && p.mesh.geometry) {
+                    p.mesh.geometry.dispose();
+                    p.mesh.geometry = new THREE.SphereGeometry(p.size, profile.planet, profile.planet);
+                }
+
+                p.mesh.children.forEach(child => {
+                    if (child.userData && child.userData.isAtmosphereLayer) {
+                        child.geometry.dispose();
+                        const scale = child.userData.atmosphereScale || 1.08;
+                        child.geometry = new THREE.SphereGeometry(p.size * scale, profile.atmosphere, profile.atmosphere);
+                    }
+                    if (child.userData && child.userData.isCloudLayer) {
+                        child.geometry.dispose();
+                        const scale = child.userData.cloudScale || 1.02;
+                        child.geometry = new THREE.SphereGeometry(p.size * scale, profile.cloud, profile.cloud);
+                    }
+                });
+            });
+        }
+
+        function applyQualityMode(mode) {
+            config.qualityMode = mode === 'high' ? 'high' : 'performance';
+            const shadowSize = config.shadowMapSize[config.qualityMode] || config.shadowMapSize.performance;
+            sunLight.shadow.mapSize.width = shadowSize;
+            sunLight.shadow.mapSize.height = shadowSize;
+            if (sunLight.shadow.map) {
+                sunLight.shadow.map.dispose();
+                sunLight.shadow.map = null;
+            }
+            rebuildQualityGeometries();
+            clearTrails();
+            renderer.shadowMap.needsUpdate = true;
+        }
+
         // --- 2. 真实光照系统 ---
         // 太阳光源（点光源）
         const sunLight = new THREE.PointLight(0xffffff, 4, 5000);
         sunLight.position.set(0, 0, 0);
         sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 2048;
-        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.mapSize.width = config.shadowMapSize[config.qualityMode];
+        sunLight.shadow.mapSize.height = config.shadowMapSize[config.qualityMode];
         sunLight.shadow.camera.near = 0.5;
         sunLight.shadow.camera.far = 5000;
         scene.add(sunLight);
@@ -1643,6 +1750,7 @@ trailMaxPoints: 600,
         ];
 
         // 太阳对象
+        const qualityProfile = getQualityProfile();
         const sunObj = {
             name: "太阳",
             nameEn: "Sun",
@@ -1657,7 +1765,7 @@ trailMaxPoints: 600,
         };
 
         // 创建太阳（纯色，带发光效果）
-        const sunGeometry = new THREE.SphereGeometry(20, 64, 64);
+        const sunGeometry = new THREE.SphereGeometry(20, qualityProfile.sun, qualityProfile.sun);
         const sunMaterial = new THREE.MeshBasicMaterial({ 
             color: 0xFFCC00,
             transparent: true,
@@ -1667,13 +1775,14 @@ trailMaxPoints: 600,
         sunObj.mesh.position.set(0, 0, 0);
         
         // 太阳光晕效果
-        const sunGlowGeometry = new THREE.SphereGeometry(25, 64, 64);
+        const sunGlowGeometry = new THREE.SphereGeometry(25, qualityProfile.sunGlow, qualityProfile.sunGlow);
         const sunGlowMaterial = new THREE.MeshBasicMaterial({
             color: 0xFFAA00,
             transparent: true,
             opacity: 0.3
         });
         const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+        sunObj.sunGlow = sunGlow;
         sunObj.mesh.add(sunGlow);
         
         worldGroup.add(sunObj.mesh);
@@ -1763,7 +1872,7 @@ trailMaxPoints: 600,
 
             // 创建行星
             const mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(data.size, 64, 64),
+                new THREE.SphereGeometry(data.size, qualityProfile.planet, qualityProfile.planet),
                 planetMat
             );
             mesh.castShadow = true;
@@ -1771,7 +1880,7 @@ trailMaxPoints: 600,
 
             // 大气层（部分行星）
             if (visualPreset.atmosphere) {
-                const atmosphereGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale, 48, 48);
+                const atmosphereGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale, qualityProfile.atmosphere, qualityProfile.atmosphere);
                 const atmosphereMaterial = new THREE.MeshPhongMaterial({
                     color: visualPreset.atmosphere.color,
                     transparent: true,
@@ -1782,6 +1891,8 @@ trailMaxPoints: 600,
                     depthWrite: false
                 });
                 const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+                atmosphere.userData.isAtmosphereLayer = true;
+                atmosphere.userData.atmosphereScale = visualPreset.atmosphere.scale;
                 mesh.add(atmosphere);
             }
 
@@ -1797,10 +1908,11 @@ trailMaxPoints: 600,
                     specular: 0xffffff
                 });
                 const cloudLayer = new THREE.Mesh(
-                    new THREE.SphereGeometry(data.size * visualPreset.cloud.scale, 40, 40),
+                    new THREE.SphereGeometry(data.size * visualPreset.cloud.scale, qualityProfile.cloud, qualityProfile.cloud),
                     cloudMaterial
                 );
                 cloudLayer.userData.isCloudLayer = true;
+                cloudLayer.userData.cloudScale = visualPreset.cloud.scale;
                 mesh.add(cloudLayer);
             }
 
@@ -1845,6 +1957,12 @@ trailMaxPoints: 600,
                 mesh: trailMesh,
                 curve: new THREE.CatmullRomCurve3([]),
                 points: [],
+                buffer: [],
+                start: 0,
+                count: 0,
+                lastSampleMs: 0,
+                lastSamplePos: new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN),
+                dirty: false,
                 visible: false
             };
 
@@ -1876,6 +1994,12 @@ trailMaxPoints: 600,
             })),
             curve: new THREE.CatmullRomCurve3([]),
             points: [],
+            buffer: [],
+            start: 0,
+            count: 0,
+            lastSampleMs: 0,
+            lastSamplePos: new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN),
+            dirty: false,
             visible: false
         };
         sunObj.trailLine.mesh.frustumCulled = false;
@@ -1892,8 +2016,15 @@ trailMaxPoints: 600,
         const clickRaycaster = new THREE.Raycaster();
         const trailWorldPos = new THREE.Vector3();
         const trailRefPos = new THREE.Vector3();
+        const trailRelativePos = new THREE.Vector3();
         const focusTempWorldPos = new THREE.Vector3();
         const focusTempCameraPos = new THREE.Vector3();
+        const perfStatsEl = document.getElementById('perf-stats');
+        const perfWindow = [];
+        let frameCount = 0;
+        let metricsLastUpdateMs = 0;
+        let panelAngleLastUpdateMs = 0;
+        let panelAngleLastValue = null;
 
         // 获取信息面板相关元素
         const infoPanel = document.getElementById('info-panel');
@@ -1994,17 +2125,128 @@ trailMaxPoints: 600,
 
         function clearTrails() {
             [...planets, sunObj].forEach(p => {
-                // 清除旧的拖影点
                 p.trailPoints = [];
-                // 清除拖影线的点
-                if (p.trailLine && p.trailLine.points) {
-                    p.trailLine.points = [];
-                    // 隐藏拖影
+                if (p.trailLine) {
+                    p.trailLine.points.length = 0;
+                    p.trailLine.buffer.length = 0;
+                    p.trailLine.start = 0;
+                    p.trailLine.count = 0;
+                    p.trailLine.lastSampleMs = 0;
+                    p.trailLine.lastSamplePos.set(Number.NaN, Number.NaN, Number.NaN);
+                    p.trailLine.dirty = false;
                     if (p.trailLine.mesh) {
                         p.trailLine.mesh.visible = false;
+                        p.trailLine.mesh.geometry.dispose();
+                        p.trailLine.mesh.geometry = new THREE.BufferGeometry();
                     }
                 }
             });
+        }
+
+        function pushTrailSample(trailLine, sample, maxPoints, nowMs) {
+            if (maxPoints <= 0) {
+                return false;
+            }
+
+            if (trailLine.buffer.length !== maxPoints) {
+                trailLine.buffer = Array.from({ length: maxPoints }, () => new THREE.Vector3());
+                trailLine.start = 0;
+                trailLine.count = 0;
+            }
+
+            const hasLast = Number.isFinite(trailLine.lastSamplePos.x);
+            if (hasLast) {
+                const sinceLastMs = nowMs - trailLine.lastSampleMs;
+                if (sinceLastMs < config.trailSampleIntervalMs && trailLine.lastSamplePos.distanceToSquared(sample) < config.trailSampleMinDistance * config.trailSampleMinDistance) {
+                    return false;
+                }
+            }
+
+            let writeIndex;
+            if (trailLine.count < maxPoints) {
+                writeIndex = (trailLine.start + trailLine.count) % maxPoints;
+                trailLine.count += 1;
+            } else {
+                writeIndex = trailLine.start;
+                trailLine.start = (trailLine.start + 1) % maxPoints;
+            }
+
+            trailLine.buffer[writeIndex].copy(sample);
+            trailLine.lastSamplePos.copy(sample);
+            trailLine.lastSampleMs = nowMs;
+            trailLine.dirty = true;
+            return true;
+        }
+
+        function syncTrailPointsFromBuffer(trailLine) {
+            const { count, start, buffer } = trailLine;
+            trailLine.points.length = count;
+            for (let i = 0; i < count; i++) {
+                const idx = (start + i) % buffer.length;
+                const point = buffer[idx];
+                if (!trailLine.points[i]) {
+                    trailLine.points[i] = point.clone();
+                } else {
+                    trailLine.points[i].copy(point);
+                }
+            }
+            trailLine.curve.points = trailLine.points;
+            trailLine.curve.updateArcLengths();
+        }
+
+        function updatePerfMetrics(nowMs, delta) {
+            const frameMs = delta * 1000;
+            perfWindow.push(frameMs);
+            if (perfWindow.length > 120) {
+                perfWindow.shift();
+            }
+
+            if (nowMs - metricsLastUpdateMs < config.metricsUpdateIntervalMs) {
+                return;
+            }
+            metricsLastUpdateMs = nowMs;
+
+            let sum = 0;
+            for (let i = 0; i < perfWindow.length; i++) {
+                sum += perfWindow[i];
+            }
+            const avgMs = perfWindow.length ? sum / perfWindow.length : 0;
+            const fps = avgMs > 0 ? 1000 / avgMs : 0;
+            const calls = renderer.info.render.calls;
+            const triangles = renderer.info.render.triangles;
+            const geometries = renderer.info.memory.geometries;
+
+            if (config.showPerfStats) {
+                perfStatsEl.style.display = 'block';
+                perfStatsEl.textContent = `FPS: ${fps.toFixed(1)}\nFrame: ${avgMs.toFixed(2)} ms\nCalls: ${calls}\nTris: ${triangles}\nGeoms: ${geometries}`;
+            } else {
+                perfStatsEl.style.display = 'none';
+            }
+
+            if (config.perfLogToConsole) {
+                console.log('[perf]', { fps: Number(fps.toFixed(1)), frameMs: Number(avgMs.toFixed(2)), calls, triangles, geometries });
+            }
+        }
+
+        function updatePanelAngleThrottled(nowMs) {
+            if (!(selectedPlanet && infoPanel.classList.contains('visible') && typeof selectedPlanet.angle === 'number')) {
+                return;
+            }
+
+            if (nowMs - panelAngleLastUpdateMs < config.panelAngleUpdateIntervalMs) {
+                return;
+            }
+
+            const deg = (((selectedPlanet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
+            const rawDelta = panelAngleLastValue === null ? Infinity : Math.abs(deg - panelAngleLastValue);
+            const delta = panelAngleLastValue === null ? Infinity : Math.min(rawDelta, 360 - rawDelta);
+            if (delta < config.panelAngleDeltaThreshold) {
+                return;
+            }
+
+            panelAngleLastUpdateMs = nowMs;
+            panelAngleLastValue = deg;
+            document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
         }
 
         // --- 信息面板功能 ---
@@ -2020,7 +2262,9 @@ trailMaxPoints: 600,
 
         function showInfoPanel(planet) {
             selectedPlanet = planet;
-            
+            panelAngleLastValue = null;
+            panelAngleLastUpdateMs = 0;
+
             document.getElementById('panel-name').textContent = planet.name;
             document.getElementById('panel-name-en').textContent = planet.nameEn;
             document.getElementById('panel-distance').textContent = formatMetricValue(planet.realDistance, 'au');
@@ -2040,6 +2284,8 @@ trailMaxPoints: 600,
         function hideInfoPanel() {
             infoPanel.classList.remove('visible');
             selectedPlanet = null;
+            panelAngleLastValue = null;
+            panelAngleLastUpdateMs = 0;
         }
 
         function animateCamera(preset) {
@@ -2124,6 +2370,8 @@ trailMaxPoints: 600,
         const resetBtn = document.getElementById('reset-btn');
         const showTrailsCheckbox = document.getElementById('show-trails');
         const showLabelsCheckbox = document.getElementById('show-labels');
+        const showPerfStatsCheckbox = document.getElementById('show-perf-stats');
+        const qualityModeSelect = document.getElementById('quality-mode');
 
         // 速度控制
         speedSlider.addEventListener('input', (e) => {
@@ -2141,15 +2389,8 @@ trailMaxPoints: 600,
             // 更新所有星球的拖影长度
             [...planets, sunObj].forEach(p => {
                 p.trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
-                // 清除现有拖影点
-                if (p.trailLine && p.trailLine.points) {
-                    p.trailLine.points = [];
-                    p.trailLine.mesh.visible = false;
-                    // 重新创建空几何体
-                    p.trailLine.mesh.geometry.dispose();
-                    p.trailLine.mesh.geometry = new THREE.BufferGeometry();
-                }
             });
+            clearTrails();
         });
 
         // 拖影粗细控制
@@ -2207,6 +2448,15 @@ trailMaxPoints: 600,
             labels.forEach(label => {
                 label.visible = config.showLabels;
             });
+        });
+
+        showPerfStatsCheckbox.addEventListener('change', (e) => {
+            config.showPerfStats = e.target.checked;
+            perfStatsEl.style.display = config.showPerfStats ? 'block' : 'none';
+        });
+
+        qualityModeSelect.addEventListener('change', (e) => {
+            applyQualityMode(e.target.value);
         });
 
         // --- 键盘快捷键 ---
@@ -2378,10 +2628,12 @@ trailMaxPoints: 600,
         function animate() {
             requestAnimationFrame(animate);
             TWEEN.update();
+            const nowMs = performance.now();
             const delta = Math.min(simulationClock.getDelta(), 0.05);
+            frameCount += 1;
 
             if (!prefersReducedMotion) {
-                const elapsed = performance.now() * 0.00014;
+                const elapsed = nowMs * 0.00014;
                 const coreStarField = scene.userData.starField;
                 const deepStarField = scene.userData.deepStarField;
                 if (coreStarField && coreStarField.material) {
@@ -2395,16 +2647,12 @@ trailMaxPoints: 600,
             }
 
             if (!config.isPaused) {
-                // 更新行星公转
                 planets.forEach(p => {
                     p.angle += p.baseSpeed * config.timeScale * delta * 60;
                     p.mesh.position.x = Math.cos(p.angle) * p.distance;
                     p.mesh.position.z = Math.sin(p.angle) * p.distance;
-
-                    // 行星自转
                     p.mesh.rotation.y += 0.01 * config.rotationScale;
 
-                    // 云层缓慢漂移（若存在）
                     p.mesh.children.forEach(child => {
                         if (child.userData && child.userData.isCloudLayer) {
                             child.rotation.y += 0.003 * config.rotationScale;
@@ -2412,66 +2660,54 @@ trailMaxPoints: 600,
                     });
                 });
 
-                // 太阳自转
                 sunObj.mesh.rotation.y += 0.002 * config.rotationScale;
             }
 
-            // 如果有锁定中心
             if (lockedPlanet) {
                 worldGroup.position.set(-lockedPlanet.mesh.position.x, 0, -lockedPlanet.mesh.position.z);
             }
 
-            // 更新拖影
-            // 当有锁定行星时显示拖影
             if (lockedPlanet && config.showTrails) {
+                lockedPlanet.mesh.getWorldPosition(trailRefPos);
                 [...planets, sunObj].forEach(p => {
+                    const trailLine = p.trailLine;
                     const maxPoints = p.trailLength || 0;
-                    
-                    // 如果拖影长度为0，隐藏拖影
+                    if (!trailLine || !trailLine.mesh) {
+                        return;
+                    }
+
                     if (maxPoints === 0) {
-                        if (p.trailLine && p.trailLine.mesh) {
-                            p.trailLine.mesh.visible = false;
+                        trailLine.mesh.visible = false;
+                        return;
+                    }
+
+                    p.mesh.getWorldPosition(trailWorldPos);
+                    trailRelativePos.subVectors(trailWorldPos, trailRefPos);
+
+                    const sampled = pushTrailSample(trailLine, trailRelativePos, maxPoints, nowMs);
+                    if (!sampled && !trailLine.dirty) {
+                        if (trailLine.count < 2) {
+                            trailLine.mesh.visible = false;
                         }
                         return;
                     }
-                    
-                    // 计算当前星体相对于锁定中心的位置
-                    p.mesh.getWorldPosition(trailWorldPos);
-                    
-                    lockedPlanet.mesh.getWorldPosition(trailRefPos);
-                    
-                    // 相对位置 = 星体位置 - 参考中心位置
-                    const relativePos = new THREE.Vector3(
-                        trailWorldPos.x - trailRefPos.x,
-                        trailWorldPos.y - trailRefPos.y,
-                        trailWorldPos.z - trailRefPos.z
-                    );
-                    
-                    p.trailLine.points.push(relativePos);
-                    if (p.trailLine.points.length > maxPoints) {
-                        p.trailLine.points.shift();
-                    }
-                    
-                    // 只有当点数足够时才更新几何体
-                    if (p.trailLine.points.length >= 2) {
-                        // 更新曲线
-                        p.trailLine.curve.points = p.trailLine.points;
-                        p.trailLine.curve.updateArcLengths();
-                        
-                        // 更新管道几何体
-                        p.trailLine.mesh.geometry.dispose();
-                        p.trailLine.mesh.geometry = new THREE.TubeGeometry(
-                            p.trailLine.curve,
-                            Math.min(64, p.trailLine.points.length),
-                            config.orbitThickness * 0.5, // 使用配置的粗细
-                            8,
+
+                    if (trailLine.count >= 2) {
+                        syncTrailPointsFromBuffer(trailLine);
+                        trailLine.mesh.geometry.dispose();
+                        trailLine.mesh.geometry = new THREE.TubeGeometry(
+                            trailLine.curve,
+                            Math.min(64, trailLine.points.length),
+                            config.orbitThickness * 0.5,
+                            config.trailTubeRadialSegments[config.qualityMode] || config.trailTubeRadialSegments.performance,
                             false
                         );
-                        
-                        p.trailLine.mesh.visible = true;
+                        trailLine.mesh.visible = true;
                     } else {
-                        p.trailLine.mesh.visible = false;
+                        trailLine.mesh.visible = false;
                     }
+
+                    trailLine.dirty = false;
                 });
             } else {
                 [...planets, sunObj].forEach(p => {
@@ -2481,17 +2717,15 @@ trailMaxPoints: 600,
                 });
             }
 
-            // 更新标签朝向
-            labels.forEach(label => {
-                label.lookAt(camera.position);
-            });
+            if (config.showLabels && frameCount % config.labelUpdateIntervalFrames === 0) {
+                labels.forEach(label => {
+                    label.lookAt(camera.position);
+                });
+            }
 
             updateFocus();
-
-            if (selectedPlanet && infoPanel.classList.contains('visible') && typeof selectedPlanet.angle === 'number') {
-                const deg = (((selectedPlanet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
-                document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
-            }
+            updatePanelAngleThrottled(nowMs);
+            updatePerfMetrics(nowMs, delta);
 
             controls.update();
             renderer.render(scene, camera);
