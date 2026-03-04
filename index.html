@@ -1209,21 +1209,34 @@
             return i18n[currentLang].notApplicable;
         }
 
+        function formatPlanetAngleDeg(planet) {
+            if (!(planet && typeof planet.angle === 'number')) {
+                return `0${i18n[currentLang].degrees}`;
+            }
+
+            const deg = (((planet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
+            return `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
+        }
+
+        function setPanelPlanetInfo(planet) {
+            panelNameEl.textContent = planet.name;
+            panelNameEnEl.textContent = planet.nameEn;
+            panelDistanceEl.textContent = formatMetricValue(planet.realDistance, 'au');
+            panelSizeEl.textContent = formatMetricValue(planet.realSize, 'earths');
+            panelPeriodEl.textContent = formatMetricValue(planet.orbitalPeriod, 'days');
+            panelAngleEl.textContent = formatPlanetAngleDeg(planet);
+            panelDescriptionEl.textContent = planet.description;
+        }
+
         function updateUnits() {
             if (!selectedPlanet) {
                 return;
             }
 
-            document.getElementById('panel-distance').textContent = formatMetricValue(selectedPlanet.realDistance, 'au');
-            document.getElementById('panel-size').textContent = formatMetricValue(selectedPlanet.realSize, 'earths');
-            document.getElementById('panel-period').textContent = formatMetricValue(selectedPlanet.orbitalPeriod, 'days');
-
-            if (typeof selectedPlanet.angle === 'number') {
-                const deg = (((selectedPlanet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
-                document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
-            } else {
-                document.getElementById('panel-angle').textContent = `0${i18n[currentLang].degrees}`;
-            }
+            panelDistanceEl.textContent = formatMetricValue(selectedPlanet.realDistance, 'au');
+            panelSizeEl.textContent = formatMetricValue(selectedPlanet.realSize, 'earths');
+            panelPeriodEl.textContent = formatMetricValue(selectedPlanet.orbitalPeriod, 'days');
+            panelAngleEl.textContent = formatPlanetAngleDeg(selectedPlanet);
         }
 
         // --- 全局配置 ---
@@ -1897,6 +1910,7 @@
             }
 
             // 云层（地球）
+            let cloudLayer = null;
             if (visualPreset.cloud) {
                 const cloudTexture = createPlanetTexture('#cfefff', '#ffffff', 'noise');
                 const cloudMaterial = new THREE.MeshPhongMaterial({
@@ -1907,7 +1921,7 @@
                     shininess: 18,
                     specular: 0xffffff
                 });
-                const cloudLayer = new THREE.Mesh(
+                cloudLayer = new THREE.Mesh(
                     new THREE.SphereGeometry(data.size * visualPreset.cloud.scale, qualityProfile.cloud, qualityProfile.cloud),
                     cloudMaterial
                 );
@@ -1971,11 +1985,12 @@
             mesh.add(label);
             labels.push(label);
 
-            const planetObj = { 
-                ...data, 
-                mesh, 
-                trailLine, 
-                trailPoints: [], 
+            const planetObj = {
+                ...data,
+                mesh,
+                cloudLayer,
+                trailLine,
+                trailPoints: [],
                 trailLength: trailLength,
                 angle: Math.random() * Math.PI * 2,
                 baseSpeed: data.speed
@@ -2006,6 +2021,29 @@
         sunObj.trailLine.mesh.visible = false;
         scene.add(sunObj.trailLine.mesh);
 
+        const trailBodies = [...planets, sunObj];
+        const planetByNameEn = new Map(planets.map(planet => [planet.nameEn, planet]));
+        const selectablePlanetMeshes = [sunObj.mesh, ...planets.map(p => p.mesh)];
+        const meshToPlanet = new Map();
+        meshToPlanet.set(sunObj.mesh, sunObj);
+        sunObj.mesh.children.forEach(child => meshToPlanet.set(child, sunObj));
+        planets.forEach(planet => {
+            meshToPlanet.set(planet.mesh, planet);
+            planet.mesh.children.forEach(child => meshToPlanet.set(child, planet));
+        });
+
+        function resolvePlanetFromMesh(mesh) {
+            let current = mesh;
+            while (current) {
+                const planet = meshToPlanet.get(current);
+                if (planet) {
+                    return planet;
+                }
+                current = current.parent;
+            }
+            return null;
+        }
+
         // --- 5. 交互逻辑 ---
         let lockedPlanet = null;
         let focusedPlanet = null;
@@ -2020,14 +2058,26 @@
         const focusTempWorldPos = new THREE.Vector3();
         const focusTempCameraPos = new THREE.Vector3();
         const perfStatsEl = document.getElementById('perf-stats');
-        const perfWindow = [];
+        const perfWindowSize = 120;
+        const perfWindow = new Array(perfWindowSize).fill(0);
+        let perfWindowCount = 0;
+        let perfWindowIndex = 0;
+        let perfWindowSum = 0;
         let frameCount = 0;
         let metricsLastUpdateMs = 0;
         let panelAngleLastUpdateMs = 0;
         let panelAngleLastValue = null;
+        let isInfoPanelVisible = false;
 
         // 获取信息面板相关元素
         const infoPanel = document.getElementById('info-panel');
+        const panelNameEl = document.getElementById('panel-name');
+        const panelNameEnEl = document.getElementById('panel-name-en');
+        const panelDistanceEl = document.getElementById('panel-distance');
+        const panelSizeEl = document.getElementById('panel-size');
+        const panelPeriodEl = document.getElementById('panel-period');
+        const panelAngleEl = document.getElementById('panel-angle');
+        const panelDescriptionEl = document.getElementById('panel-description');
         const closeInfoBtn = document.getElementById('close-info');
         const btnFocus = document.getElementById('btn-focus');
         const btnOrbit = document.getElementById('btn-orbit');
@@ -2043,14 +2093,13 @@
             );
             clickRaycaster.setFromCamera(clickMouse, camera);
             
-            const planetMeshes = [sunObj.mesh, ...planets.map(p => p.mesh)];
-            const intersects = clickRaycaster.intersectObjects(planetMeshes, true);
+            const intersects = clickRaycaster.intersectObjects(selectablePlanetMeshes, true);
 
             if (intersects.length > 0) {
                 const clickedMesh = intersects[0].object;
-                const isSunHit = clickedMesh === sunObj.mesh || sunObj.mesh.children.includes(clickedMesh);
-                
-                if (isSunHit) {
+                const clickedPlanet = resolvePlanetFromMesh(clickedMesh);
+
+                if (clickedPlanet === sunObj) {
                     // 设置锁定行星，不移动相机
                     selectedPlanet = sunObj;
                     lockedPlanet = sunObj;
@@ -2060,19 +2109,16 @@
                     showInfoBtn.classList.add('is-visible');
                     // 更新中心星球按钮激活状态
                     updateCenterButton('sun');
-                } else {
-                    const clickedPlanet = planets.find(p => p.mesh === clickedMesh || p.mesh.children.includes(clickedMesh));
-                    if (clickedPlanet) {
-                        // 设置锁定行星，不移动相机
-                        selectedPlanet = clickedPlanet;
-                        lockedPlanet = clickedPlanet;
-                        stopFocus();
-                        clearTrails();
-                        setCenterViewName(clickedPlanet);
-                        showInfoBtn.classList.add('is-visible');
-                        // 更新中心星球按钮激活状态
-                        updateCenterButton(clickedPlanet.nameEn.toLowerCase());
-                    }
+                } else if (clickedPlanet) {
+                    // 设置锁定行星，不移动相机
+                    selectedPlanet = clickedPlanet;
+                    lockedPlanet = clickedPlanet;
+                    stopFocus();
+                    clearTrails();
+                    setCenterViewName(clickedPlanet);
+                    showInfoBtn.classList.add('is-visible');
+                    // 更新中心星球按钮激活状态
+                    updateCenterButton(clickedPlanet.nameEn.toLowerCase());
                 }
             } else {
                 hideInfoPanel();
@@ -2107,6 +2153,17 @@
             }
         });
 
+        function setShowInfoButtonVisible(visible) {
+            if (!showInfoBtn) {
+                return;
+            }
+            if (visible) {
+                showInfoBtn.classList.add('is-visible');
+            } else {
+                showInfoBtn.classList.remove('is-visible');
+            }
+        }
+
         function resetReference(resetCamera = false) {
             lockedPlanet = null;
             focusedPlanet = null;
@@ -2123,8 +2180,16 @@
             }
         }
 
+        function setTrailMeshVisible(trailLine, visible) {
+            if (!trailLine || !trailLine.mesh || trailLine.visible === visible) {
+                return;
+            }
+            trailLine.mesh.visible = visible;
+            trailLine.visible = visible;
+        }
+
         function clearTrails() {
-            [...planets, sunObj].forEach(p => {
+            trailBodies.forEach(p => {
                 p.trailPoints = [];
                 if (p.trailLine) {
                     p.trailLine.points.length = 0;
@@ -2135,7 +2200,7 @@
                     p.trailLine.lastSamplePos.set(Number.NaN, Number.NaN, Number.NaN);
                     p.trailLine.dirty = false;
                     if (p.trailLine.mesh) {
-                        p.trailLine.mesh.visible = false;
+                        setTrailMeshVisible(p.trailLine, false);
                         p.trailLine.mesh.geometry.dispose();
                         p.trailLine.mesh.geometry = new THREE.BufferGeometry();
                     }
@@ -2196,21 +2261,23 @@
 
         function updatePerfMetrics(nowMs, delta) {
             const frameMs = delta * 1000;
-            perfWindow.push(frameMs);
-            if (perfWindow.length > 120) {
-                perfWindow.shift();
+            if (perfWindowCount < perfWindowSize) {
+                perfWindow[perfWindowIndex] = frameMs;
+                perfWindowSum += frameMs;
+                perfWindowCount += 1;
+            } else {
+                perfWindowSum -= perfWindow[perfWindowIndex];
+                perfWindow[perfWindowIndex] = frameMs;
+                perfWindowSum += frameMs;
             }
+            perfWindowIndex = (perfWindowIndex + 1) % perfWindowSize;
 
             if (nowMs - metricsLastUpdateMs < config.metricsUpdateIntervalMs) {
                 return;
             }
             metricsLastUpdateMs = nowMs;
 
-            let sum = 0;
-            for (let i = 0; i < perfWindow.length; i++) {
-                sum += perfWindow[i];
-            }
-            const avgMs = perfWindow.length ? sum / perfWindow.length : 0;
+            const avgMs = perfWindowCount ? perfWindowSum / perfWindowCount : 0;
             const fps = avgMs > 0 ? 1000 / avgMs : 0;
             const calls = renderer.info.render.calls;
             const triangles = renderer.info.render.triangles;
@@ -2229,7 +2296,7 @@
         }
 
         function updatePanelAngleThrottled(nowMs) {
-            if (!(selectedPlanet && infoPanel.classList.contains('visible') && typeof selectedPlanet.angle === 'number')) {
+            if (!(selectedPlanet && isInfoPanelVisible && typeof selectedPlanet.angle === 'number')) {
                 return;
             }
 
@@ -2246,7 +2313,7 @@
 
             panelAngleLastUpdateMs = nowMs;
             panelAngleLastValue = deg;
-            document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
+            panelAngleEl.textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
         }
 
         // --- 信息面板功能 ---
@@ -2265,24 +2332,21 @@
             panelAngleLastValue = null;
             panelAngleLastUpdateMs = 0;
 
-            document.getElementById('panel-name').textContent = planet.name;
-            document.getElementById('panel-name-en').textContent = planet.nameEn;
-            document.getElementById('panel-distance').textContent = formatMetricValue(planet.realDistance, 'au');
-            document.getElementById('panel-size').textContent = formatMetricValue(planet.realSize, 'earths');
-            document.getElementById('panel-period').textContent = formatMetricValue(planet.orbitalPeriod, 'days');
-            if (typeof planet.angle === 'number') {
-                const deg = (((planet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
-                document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
-            } else {
-                document.getElementById('panel-angle').textContent = `0${i18n[currentLang].degrees}`;
+            setPanelPlanetInfo(planet);
+            if (!isInfoPanelVisible) {
+                infoPanel.classList.add('visible');
+                isInfoPanelVisible = true;
             }
-            document.getElementById('panel-description').textContent = planet.description;
-            
-            infoPanel.classList.add('visible');
         }
 
         function hideInfoPanel() {
-            infoPanel.classList.remove('visible');
+            if (!isInfoPanelVisible && !selectedPlanet) {
+                return;
+            }
+            if (isInfoPanelVisible) {
+                infoPanel.classList.remove('visible');
+                isInfoPanelVisible = false;
+            }
             selectedPlanet = null;
             panelAngleLastValue = null;
             panelAngleLastUpdateMs = 0;
@@ -2387,7 +2451,7 @@
             config.trailMaxPoints = parseInt(e.target.value);
             trailValue.textContent = config.trailMaxPoints;
             // 更新所有星球的拖影长度
-            [...planets, sunObj].forEach(p => {
+            trailBodies.forEach(p => {
                 p.trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
             });
             clearTrails();
@@ -2546,11 +2610,22 @@
             showInfoBtn.classList.add('is-visible');
         }
 
+        const centerButtonsByName = new Map(Array.from(document.querySelectorAll('.center-planet-btn')).map(btn => [btn.id.replace('center-', ''), btn]));
+        let activeCenterButton = centerButtonsByName.get('sun') || null;
+
         // 更新按钮激活状态的辅助函数
         function updateCenterButton(planetName) {
-            document.querySelectorAll('.center-planet-btn').forEach(btn => btn.classList.remove('active'));
-            const btn = document.getElementById(`center-${planetName}`);
-            if (btn) btn.classList.add('active');
+            const btn = centerButtonsByName.get(planetName) || null;
+            if (btn === activeCenterButton) {
+                return;
+            }
+            if (activeCenterButton) {
+                activeCenterButton.classList.remove('active');
+            }
+            if (btn) {
+                btn.classList.add('active');
+            }
+            activeCenterButton = btn;
         }
 
         document.getElementById('center-sun').addEventListener('click', () => {
@@ -2559,7 +2634,7 @@
         });
 
         document.getElementById('center-mercury').addEventListener('click', () => {
-            const mercury = planets.find(p => p.nameEn === 'Mercury');
+            const mercury = planetByNameEn.get('Mercury');
             if (mercury) {
                 centerOnPlanet(mercury);
                 updateCenterButton('mercury');
@@ -2567,7 +2642,7 @@
         });
 
         document.getElementById('center-venus').addEventListener('click', () => {
-            const venus = planets.find(p => p.nameEn === 'Venus');
+            const venus = planetByNameEn.get('Venus');
             if (venus) {
                 centerOnPlanet(venus);
                 updateCenterButton('venus');
@@ -2575,7 +2650,7 @@
         });
 
         document.getElementById('center-earth').addEventListener('click', () => {
-            const earth = planets.find(p => p.nameEn === 'Earth');
+            const earth = planetByNameEn.get('Earth');
             if (earth) {
                 centerOnPlanet(earth);
                 updateCenterButton('earth');
@@ -2583,7 +2658,7 @@
         });
 
         document.getElementById('center-mars').addEventListener('click', () => {
-            const mars = planets.find(p => p.nameEn === 'Mars');
+            const mars = planetByNameEn.get('Mars');
             if (mars) {
                 centerOnPlanet(mars);
                 updateCenterButton('mars');
@@ -2591,7 +2666,7 @@
         });
 
         document.getElementById('center-jupiter').addEventListener('click', () => {
-            const jupiter = planets.find(p => p.nameEn === 'Jupiter');
+            const jupiter = planetByNameEn.get('Jupiter');
             if (jupiter) {
                 centerOnPlanet(jupiter);
                 updateCenterButton('jupiter');
@@ -2599,7 +2674,7 @@
         });
 
         document.getElementById('center-saturn').addEventListener('click', () => {
-            const saturn = planets.find(p => p.nameEn === 'Saturn');
+            const saturn = planetByNameEn.get('Saturn');
             if (saturn) {
                 centerOnPlanet(saturn);
                 updateCenterButton('saturn');
@@ -2607,7 +2682,7 @@
         });
 
         document.getElementById('center-uranus').addEventListener('click', () => {
-            const uranus = planets.find(p => p.nameEn === 'Uranus');
+            const uranus = planetByNameEn.get('Uranus');
             if (uranus) {
                 centerOnPlanet(uranus);
                 updateCenterButton('uranus');
@@ -2615,7 +2690,7 @@
         });
 
         document.getElementById('center-neptune').addEventListener('click', () => {
-            const neptune = planets.find(p => p.nameEn === 'Neptune');
+            const neptune = planetByNameEn.get('Neptune');
             if (neptune) {
                 centerOnPlanet(neptune);
                 updateCenterButton('neptune');
@@ -2653,11 +2728,9 @@
                     p.mesh.position.z = Math.sin(p.angle) * p.distance;
                     p.mesh.rotation.y += 0.01 * config.rotationScale;
 
-                    p.mesh.children.forEach(child => {
-                        if (child.userData && child.userData.isCloudLayer) {
-                            child.rotation.y += 0.003 * config.rotationScale;
-                        }
-                    });
+                    if (p.cloudLayer) {
+                        p.cloudLayer.rotation.y += 0.003 * config.rotationScale;
+                    }
                 });
 
                 sunObj.mesh.rotation.y += 0.002 * config.rotationScale;
@@ -2668,51 +2741,53 @@
             }
 
             if (lockedPlanet && config.showTrails) {
-                lockedPlanet.mesh.getWorldPosition(trailRefPos);
-                [...planets, sunObj].forEach(p => {
-                    const trailLine = p.trailLine;
-                    const maxPoints = p.trailLength || 0;
-                    if (!trailLine || !trailLine.mesh) {
-                        return;
-                    }
-
-                    if (maxPoints === 0) {
-                        trailLine.mesh.visible = false;
-                        return;
-                    }
-
-                    p.mesh.getWorldPosition(trailWorldPos);
-                    trailRelativePos.subVectors(trailWorldPos, trailRefPos);
-
-                    const sampled = pushTrailSample(trailLine, trailRelativePos, maxPoints, nowMs);
-                    if (!sampled && !trailLine.dirty) {
-                        if (trailLine.count < 2) {
-                            trailLine.mesh.visible = false;
+                if (!config.isPaused) {
+                    lockedPlanet.mesh.getWorldPosition(trailRefPos);
+                    trailBodies.forEach(p => {
+                        const trailLine = p.trailLine;
+                        const maxPoints = p.trailLength || 0;
+                        if (!trailLine || !trailLine.mesh) {
+                            return;
                         }
-                        return;
-                    }
 
-                    if (trailLine.count >= 2) {
-                        syncTrailPointsFromBuffer(trailLine);
-                        trailLine.mesh.geometry.dispose();
-                        trailLine.mesh.geometry = new THREE.TubeGeometry(
-                            trailLine.curve,
-                            Math.min(64, trailLine.points.length),
-                            config.orbitThickness * 0.5,
-                            config.trailTubeRadialSegments[config.qualityMode] || config.trailTubeRadialSegments.performance,
-                            false
-                        );
-                        trailLine.mesh.visible = true;
-                    } else {
-                        trailLine.mesh.visible = false;
-                    }
+                        if (maxPoints === 0) {
+                            setTrailMeshVisible(trailLine, false);
+                            return;
+                        }
 
-                    trailLine.dirty = false;
-                });
+                        p.mesh.getWorldPosition(trailWorldPos);
+                        trailRelativePos.subVectors(trailWorldPos, trailRefPos);
+
+                        const sampled = pushTrailSample(trailLine, trailRelativePos, maxPoints, nowMs);
+                        if (!sampled && !trailLine.dirty) {
+                            if (trailLine.count < 2) {
+                                setTrailMeshVisible(trailLine, false);
+                            }
+                            return;
+                        }
+
+                        if (trailLine.count >= 2) {
+                            syncTrailPointsFromBuffer(trailLine);
+                            trailLine.mesh.geometry.dispose();
+                            trailLine.mesh.geometry = new THREE.TubeGeometry(
+                                trailLine.curve,
+                                Math.min(64, trailLine.points.length),
+                                config.orbitThickness * 0.5,
+                                config.trailTubeRadialSegments[config.qualityMode] || config.trailTubeRadialSegments.performance,
+                                false
+                            );
+                            setTrailMeshVisible(trailLine, true);
+                        } else {
+                            setTrailMeshVisible(trailLine, false);
+                        }
+
+                        trailLine.dirty = false;
+                    });
+                }
             } else {
-                [...planets, sunObj].forEach(p => {
+                trailBodies.forEach(p => {
                     if (p.trailLine && p.trailLine.mesh) {
-                        p.trailLine.mesh.visible = false;
+                        setTrailMeshVisible(p.trailLine, false);
                     }
                 });
             }

@@ -22,7 +22,7 @@ An interactive 3D solar system visualization web application featuring relative 
 - **Time Speed Control**: 0x - 20x adjustable
 - **Trail Length Control**: 0 - 1000 points
 - **Trail Thickness Control**: 0.1 - 5.0
-- **Display Options**: Toggle trails and planet labels
+- **Display Options**: Toggle trails, planet labels, and performance stats
 - **View Presets**: Top, Front, Side, Diagonal, and Low-angle views
 - **Pause/Resume**: Stop the animation at any time
 
