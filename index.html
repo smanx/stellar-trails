@@ -1069,7 +1069,9 @@
                 au: 'AU',
                 earths: 'Earths',
                 days: 'days',
-                degrees: '°'
+                degrees: '°',
+                notApplicable: 'N/A',
+                quickHelp: 'Shortcuts:\nSpace: Pause/Resume\n1-5: Preset views\nR: Reset view\nESC: Close panel/Reset\n+/-: Adjust speed'
             },
             zh: {
                 title: '星轨视界',
@@ -1120,9 +1122,25 @@
                 au: 'AU',
                 earths: '地球',
                 days: '天',
-                degrees: '°'
+                degrees: '°',
+                notApplicable: '不适用',
+                quickHelp: '快捷键:\n空格: 暂停/继续\n1-5: 预设视角\nR: 重置视角\nESC: 关闭面板/重置\n+/-: 调整速度'
             }
         };
+
+        function formatCenterLabel(planet, lang = currentLang) {
+            if (!planet || planet === sunObj) {
+                return i18n[lang].sunStatic;
+            }
+
+            return lang === 'zh'
+                ? `${planet.name} (${planet.nameEn})`
+                : `${planet.nameEn} (${planet.name})`;
+        }
+
+        function setCenterViewName(planet) {
+            document.getElementById('view-name').textContent = formatCenterLabel(planet, currentLang);
+        }
 
         // 切换语言函数
         function setLanguage(lang) {
@@ -1145,11 +1163,7 @@
             
             // 更新参考中心显示
             if (lockedPlanet) {
-                if (lockedPlanet === sunObj) {
-                    document.getElementById('view-name').textContent = i18n[lang].sunStatic;
-                } else {
-                    document.getElementById('view-name').textContent = `${lockedPlanet.name} (${lockedPlanet.nameEn})`;
-                }
+                document.getElementById('view-name').textContent = formatCenterLabel(lockedPlanet, lang);
             } else {
                 document.getElementById('view-name').textContent = i18n[lang].sunStatic;
             }
@@ -1166,27 +1180,28 @@
         }
         
         // 更新单位显示
+        function formatMetricValue(value, unitKey) {
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                return `${value} ${i18n[currentLang][unitKey]}`;
+            }
+
+            return i18n[currentLang].notApplicable;
+        }
+
         function updateUnits() {
-            const distanceEl = document.getElementById('panel-distance');
-            const sizeEl = document.getElementById('panel-size');
-            const periodEl = document.getElementById('panel-period');
-            const angleEl = document.getElementById('panel-angle');
-            
-            if (distanceEl) {
-                const value = distanceEl.textContent.split(' ')[0];
-                distanceEl.textContent = `${value} ${i18n[currentLang].au}`;
+            if (!selectedPlanet) {
+                return;
             }
-            if (sizeEl) {
-                const value = sizeEl.textContent.split(' ')[0];
-                sizeEl.textContent = `${value} ${i18n[currentLang].earths}`;
-            }
-            if (periodEl) {
-                const value = periodEl.textContent.split(' ')[0];
-                periodEl.textContent = `${value} ${i18n[currentLang].days}`;
-            }
-            if (angleEl) {
-                const value = angleEl.textContent;
-                angleEl.textContent = value;
+
+            document.getElementById('panel-distance').textContent = formatMetricValue(selectedPlanet.realDistance, 'au');
+            document.getElementById('panel-size').textContent = formatMetricValue(selectedPlanet.realSize, 'earths');
+            document.getElementById('panel-period').textContent = formatMetricValue(selectedPlanet.orbitalPeriod, 'days');
+
+            if (typeof selectedPlanet.angle === 'number') {
+                const deg = (((selectedPlanet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
+                document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
+            } else {
+                document.getElementById('panel-angle').textContent = `0${i18n[currentLang].degrees}`;
             }
         }
 
@@ -1226,6 +1241,7 @@ trailMaxPoints: 600,
         controls.dampingFactor = 0.05;
         controls.minDistance = 50;
         controls.maxDistance = 2000;
+        const simulationClock = new THREE.Clock();
 
         // --- 2. 真实光照系统 ---
         // 太阳光源（点光源）
@@ -1630,6 +1646,9 @@ trailMaxPoints: 600,
         const sunObj = {
             name: "太阳",
             nameEn: "Sun",
+            realDistance: 0,
+            realSize: 109,
+            orbitalPeriod: null,
             mesh: null,
             trailPoints: [],
             trailLine: null,
@@ -1866,8 +1885,15 @@ trailMaxPoints: 600,
         // --- 5. 交互逻辑 ---
         let lockedPlanet = null;
         let focusedPlanet = null;
+        let focusReady = false;
         let focusOffset = new THREE.Vector3();
         let selectedPlanet = null;
+        const clickMouse = new THREE.Vector2();
+        const clickRaycaster = new THREE.Raycaster();
+        const trailWorldPos = new THREE.Vector3();
+        const trailRefPos = new THREE.Vector3();
+        const focusTempWorldPos = new THREE.Vector3();
+        const focusTempCameraPos = new THREE.Vector3();
 
         // 获取信息面板相关元素
         const infoPanel = document.getElementById('info-panel');
@@ -1880,25 +1906,26 @@ trailMaxPoints: 600,
         window.addEventListener('mousedown', (event) => {
             if (event.target.closest('#controls') || event.target.closest('#info-panel') || event.target.closest('#show-info-btn')) return;
             
-            const mouse = new THREE.Vector2(
+            clickMouse.set(
                 (event.clientX / window.innerWidth) * 2 - 1,
                 -(event.clientY / window.innerHeight) * 2 + 1
             );
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(mouse, camera);
+            clickRaycaster.setFromCamera(clickMouse, camera);
             
             const planetMeshes = [sunObj.mesh, ...planets.map(p => p.mesh)];
-            const intersects = raycaster.intersectObjects(planetMeshes);
+            const intersects = clickRaycaster.intersectObjects(planetMeshes, true);
 
             if (intersects.length > 0) {
                 const clickedMesh = intersects[0].object;
+                const isSunHit = clickedMesh === sunObj.mesh || sunObj.mesh.children.includes(clickedMesh);
                 
-                if (clickedMesh === sunObj.mesh) {
+                if (isSunHit) {
                     // 设置锁定行星，不移动相机
                     selectedPlanet = sunObj;
                     lockedPlanet = sunObj;
+                    stopFocus();
                     clearTrails();
-                    document.getElementById('view-name').innerText = "太阳";
+                    setCenterViewName(sunObj);
                     showInfoBtn.classList.add('is-visible');
                     // 更新中心星球按钮激活状态
                     updateCenterButton('sun');
@@ -1908,8 +1935,9 @@ trailMaxPoints: 600,
                         // 设置锁定行星，不移动相机
                         selectedPlanet = clickedPlanet;
                         lockedPlanet = clickedPlanet;
+                        stopFocus();
                         clearTrails();
-                        document.getElementById('view-name').innerText = `${clickedPlanet.name} (${clickedPlanet.nameEn})`;
+                        setCenterViewName(clickedPlanet);
                         showInfoBtn.classList.add('is-visible');
                         // 更新中心星球按钮激活状态
                         updateCenterButton(clickedPlanet.nameEn.toLowerCase());
@@ -1942,7 +1970,7 @@ trailMaxPoints: 600,
             e.stopPropagation();
             if (selectedPlanet && selectedPlanet !== sunObj) {
                 lockedPlanet = selectedPlanet;
-                document.getElementById('view-name').innerText = `${lockedPlanet.name} (${lockedPlanet.nameEn})`;
+                setCenterViewName(lockedPlanet);
                 staticOrbits.visible = false;
                 clearTrails();
             }
@@ -1951,7 +1979,9 @@ trailMaxPoints: 600,
         function resetReference(resetCamera = false) {
             lockedPlanet = null;
             focusedPlanet = null;
-            document.getElementById('view-name').innerText = "太阳 (静止轨道)";
+            selectedPlanet = null;
+            document.getElementById('show-info-btn').classList.remove('is-visible');
+            document.getElementById('view-name').textContent = i18n[currentLang].sunStatic;
             worldGroup.position.set(0, 0, 0);
             clearTrails();
             
@@ -1993,9 +2023,15 @@ trailMaxPoints: 600,
             
             document.getElementById('panel-name').textContent = planet.name;
             document.getElementById('panel-name-en').textContent = planet.nameEn;
-            document.getElementById('panel-distance').textContent = `${planet.realDistance} ${i18n[currentLang].au}`;
-            document.getElementById('panel-size').textContent = `${planet.realSize} ${i18n[currentLang].earths}`;
-            document.getElementById('panel-period').textContent = `${planet.orbitalPeriod} ${i18n[currentLang].days}`;
+            document.getElementById('panel-distance').textContent = formatMetricValue(planet.realDistance, 'au');
+            document.getElementById('panel-size').textContent = formatMetricValue(planet.realSize, 'earths');
+            document.getElementById('panel-period').textContent = formatMetricValue(planet.orbitalPeriod, 'days');
+            if (typeof planet.angle === 'number') {
+                const deg = (((planet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
+                document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
+            } else {
+                document.getElementById('panel-angle').textContent = `0${i18n[currentLang].degrees}`;
+            }
             document.getElementById('panel-description').textContent = planet.description;
             
             infoPanel.classList.add('visible');
@@ -2021,6 +2057,8 @@ trailMaxPoints: 600,
         }
 
         function focusOnPlanet(planet) {
+            focusedPlanet = planet;
+            focusReady = false;
             const worldPos = new THREE.Vector3();
             planet.mesh.getWorldPosition(worldPos);
             
@@ -2036,6 +2074,12 @@ trailMaxPoints: 600,
                 .to({ x: cameraPos.x, y: cameraPos.y, z: cameraPos.z }, 1500)
                 .easing(TWEEN.Easing.Cubic.Out)
                 .onComplete(() => {
+                    if (!focusedPlanet) {
+                        return;
+                    }
+                    focusedPlanet.mesh.getWorldPosition(focusTempWorldPos);
+                    focusOffset.copy(camera.position).sub(focusTempWorldPos);
+                    focusReady = true;
                     // 聚焦完成后显示详情按钮
                     document.getElementById('show-info-btn').classList.add('is-visible');
                 })
@@ -2049,26 +2093,26 @@ trailMaxPoints: 600,
 
         function stopFocus() {
             focusedPlanet = null;
+            focusReady = false;
             document.getElementById('show-info-btn').classList.remove('is-visible');
             // 停止聚焦时不清除拖影，因为lockedPlanet还在
         }
 
         function updateFocus() {
-            if (focusedPlanet) {
-                const worldPos = new THREE.Vector3();
-                focusedPlanet.mesh.getWorldPosition(worldPos);
+            if (focusedPlanet && focusReady) {
+                focusedPlanet.mesh.getWorldPosition(focusTempWorldPos);
                 
                 // 计算新的相机位置（保持相同的相对偏移）
-                const newCameraPos = worldPos.clone().add(focusOffset);
+                focusTempCameraPos.copy(focusTempWorldPos).add(focusOffset);
                 
                 // 平滑更新相机位置和目标点
-                camera.position.x += (newCameraPos.x - camera.position.x) * 0.1;
-                camera.position.y += (newCameraPos.y - camera.position.y) * 0.1;
-                camera.position.z += (newCameraPos.z - camera.position.z) * 0.1;
+                camera.position.x += (focusTempCameraPos.x - camera.position.x) * 0.1;
+                camera.position.y += (focusTempCameraPos.y - camera.position.y) * 0.1;
+                camera.position.z += (focusTempCameraPos.z - camera.position.z) * 0.1;
                 
-                controls.target.x += (worldPos.x - controls.target.x) * 0.1;
-                controls.target.y += (worldPos.y - controls.target.y) * 0.1;
-                controls.target.z += (worldPos.z - controls.target.z) * 0.1;
+                controls.target.x += (focusTempWorldPos.x - controls.target.x) * 0.1;
+                controls.target.y += (focusTempWorldPos.y - controls.target.y) * 0.1;
+                controls.target.z += (focusTempWorldPos.z - controls.target.z) * 0.1;
             }
         }
 
@@ -2143,7 +2187,7 @@ trailMaxPoints: 600,
         // 暂停控制
         pauseBtn.addEventListener('click', () => {
             config.isPaused = !config.isPaused;
-            pauseBtn.textContent = config.isPaused ? '▶️ 继续' : '⏸️ 暂停';
+            pauseBtn.textContent = config.isPaused ? i18n[currentLang].resume : i18n[currentLang].pause;
             pauseBtn.classList.toggle('active', config.isPaused);
         });
 
@@ -2154,10 +2198,6 @@ trailMaxPoints: 600,
         });
 
         // 显示选项
-        showTrailsCheckbox.addEventListener('change', (e) => {
-            config.showTrails = e.target.checked;
-        });
-
         showTrailsCheckbox.addEventListener('change', (e) => {
             config.showTrails = e.target.checked;
         });
@@ -2178,7 +2218,7 @@ trailMaxPoints: 600,
                 case ' ':
                     e.preventDefault();
                     config.isPaused = !config.isPaused;
-                    pauseBtn.textContent = config.isPaused ? '▶️ 继续' : '⏸️ 暂停';
+                    pauseBtn.textContent = config.isPaused ? i18n[currentLang].resume : i18n[currentLang].pause;
                     pauseBtn.classList.toggle('active', config.isPaused);
                     break;
                 case '1':
@@ -2206,18 +2246,18 @@ trailMaxPoints: 600,
                     break;
                 case '+':
                 case '=':
-                    config.timeScale = Math.min(5, config.timeScale + 0.5);
+                    config.timeScale = Math.min(parseFloat(speedSlider.max), config.timeScale + 0.5);
                     speedSlider.value = config.timeScale;
                     updateSpeedDisplay();
                     break;
                 case '-':
-                    config.timeScale = Math.max(0, config.timeScale - 0.5);
+                    config.timeScale = Math.max(parseFloat(speedSlider.min), config.timeScale - 0.5);
                     speedSlider.value = config.timeScale;
                     updateSpeedDisplay();
                     break;
                 case 'h':
                     // 显示帮助
-                    alert('快捷键:\n空格: 暂停/继续\n1-5: 预设视角\nR: 重置视角\nESC: 关闭面板/重置\n+/-: 调整速度');
+                    alert(i18n[currentLang].quickHelp);
                     break;
             }
         });
@@ -2250,8 +2290,9 @@ trailMaxPoints: 600,
             // 只设置锁定行星，不移动相机
             selectedPlanet = planet;
             lockedPlanet = planet;
+            stopFocus();
             clearTrails();
-            document.getElementById('view-name').innerText = `${planet.name} (${planet.nameEn})`;
+            setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
         }
 
@@ -2337,6 +2378,7 @@ trailMaxPoints: 600,
         function animate() {
             requestAnimationFrame(animate);
             TWEEN.update();
+            const delta = Math.min(simulationClock.getDelta(), 0.05);
 
             if (!prefersReducedMotion) {
                 const elapsed = performance.now() * 0.00014;
@@ -2355,7 +2397,7 @@ trailMaxPoints: 600,
             if (!config.isPaused) {
                 // 更新行星公转
                 planets.forEach(p => {
-                    p.angle += p.baseSpeed * config.timeScale;
+                    p.angle += p.baseSpeed * config.timeScale * delta * 60;
                     p.mesh.position.x = Math.cos(p.angle) * p.distance;
                     p.mesh.position.z = Math.sin(p.angle) * p.distance;
 
@@ -2394,17 +2436,15 @@ trailMaxPoints: 600,
                     }
                     
                     // 计算当前星体相对于锁定中心的位置
-                    const worldPos = new THREE.Vector3();
-                    p.mesh.getWorldPosition(worldPos);
+                    p.mesh.getWorldPosition(trailWorldPos);
                     
-                    const refPos = new THREE.Vector3();
-                    lockedPlanet.mesh.getWorldPosition(refPos);
+                    lockedPlanet.mesh.getWorldPosition(trailRefPos);
                     
                     // 相对位置 = 星体位置 - 参考中心位置
                     const relativePos = new THREE.Vector3(
-                        worldPos.x - refPos.x,
-                        worldPos.y - refPos.y,
-                        worldPos.z - refPos.z
+                        trailWorldPos.x - trailRefPos.x,
+                        trailWorldPos.y - trailRefPos.y,
+                        trailWorldPos.z - trailRefPos.z
                     );
                     
                     p.trailLine.points.push(relativePos);
@@ -2415,7 +2455,7 @@ trailMaxPoints: 600,
                     // 只有当点数足够时才更新几何体
                     if (p.trailLine.points.length >= 2) {
                         // 更新曲线
-                        p.trailLine.curve.points = p.trailLine.points.map(pt => new THREE.Vector3(pt.x, pt.y, pt.z));
+                        p.trailLine.curve.points = p.trailLine.points;
                         p.trailLine.curve.updateArcLengths();
                         
                         // 更新管道几何体
@@ -2446,6 +2486,13 @@ trailMaxPoints: 600,
                 label.lookAt(camera.position);
             });
 
+            updateFocus();
+
+            if (selectedPlanet && infoPanel.classList.contains('visible') && typeof selectedPlanet.angle === 'number') {
+                const deg = (((selectedPlanet.angle % (Math.PI * 2)) * 180) / Math.PI + 360) % 360;
+                document.getElementById('panel-angle').textContent = `${deg.toFixed(1)}${i18n[currentLang].degrees}`;
+            }
+
             controls.update();
             renderer.render(scene, camera);
         }
@@ -2455,7 +2502,7 @@ trailMaxPoints: 600,
         
         // 默认锁定太阳，显示拖影
         lockedPlanet = sunObj;
-        document.getElementById('view-name').innerText = "Sun";
+        setCenterViewName(sunObj);
         updateCenterButton('sun');
         
         // 开始动画
