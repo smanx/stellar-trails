@@ -5,9 +5,12 @@
     <title>Stellar Trails</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Ccircle cx='60' cy='60' r='56' fill='%23030412'/%3E%3Ccircle cx='60' cy='60' r='20' fill='%2300ffff'/%3E%3Ccircle cx='90' cy='40' r='7' fill='%238ab7ff'/%3E%3C/svg%3E">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
         :root {
-            --font-family-base: 'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif;
-            --font-family-display: 'Georgia', 'Times New Roman', serif;
+            --font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-family-display: 'Orbitron', 'Inter', sans-serif;
+            --font-family-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
             --font-size-xs: 11px;
             --font-size-sm: 13px;
             --font-size-md: 14px;
@@ -44,6 +47,7 @@
             --space-6: 20px;
             --space-7: 25px;
             --space-8: 30px;
+            --space-10: 40px;
 
             --radius-sm: 6px;
             --radius-md: 8px;
@@ -93,8 +97,8 @@
                 radial-gradient(circle at 84% 22%, var(--color-bg-glow-b), transparent 45%),
                 radial-gradient(circle at 54% 92%, var(--color-bg-glow-c), transparent 48%),
                 linear-gradient(150deg, var(--color-bg-page) 0%, var(--color-bg-deep) 64%, #050610 100%);
-            filter: saturate(120%);
-            animation: auroraShift 18s ease-in-out infinite alternate;
+            filter: saturate(110%);
+            animation: auroraShift 20s ease-in-out infinite alternate;
         }
 
         body::after {
@@ -114,16 +118,10 @@
         #info,
         #controls,
         #info-panel {
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid var(--color-surface-border);
-            box-shadow: var(--shadow-elevation-premium);
+            border: 1px solid rgba(0, 255, 255, 0.1);
             overflow: hidden;
         }
 
-        #info::before,
-        #controls::before,
-        #info-panel::before,
         #speed-indicator::before,
         #show-info-btn::before {
             content: '';
@@ -131,8 +129,8 @@
             inset: 0;
             pointer-events: none;
             border-radius: inherit;
-            background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
-            opacity: 0.52;
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+            opacity: 0.5;
         }
 
         #info {
@@ -141,56 +139,69 @@
             left: var(--space-6);
             color: var(--color-text-primary);
             pointer-events: none;
-            background: linear-gradient(145deg, rgba(8, 16, 42, 0.8), rgba(4, 7, 16, 0.82));
-            padding: var(--space-5);
+            background: linear-gradient(145deg, rgba(8, 16, 42, 0.85), rgba(4, 7, 16, 0.88));
+            padding: var(--space-5) var(--space-6);
             border-radius: var(--radius-lg);
-            border-left: 4px solid var(--color-accent);
+            border: 1px solid rgba(0, 255, 255, 0.12);
             max-width: 320px;
             z-index: 90;
             transform: translateY(0);
             animation: hudFloat 6s ease-in-out infinite;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 255, 255, 0.05);
         }
 
         #info h3 {
             margin: 0 0 var(--space-3) 0;
             color: var(--color-accent);
-            font-size: var(--font-size-lg);
+            font-size: 15px;
             font-family: var(--font-family-display);
             font-weight: 700;
             line-height: var(--line-height-tight);
-            letter-spacing: 0.6px;
-            text-shadow: 0 0 24px rgba(0, 255, 255, 0.4);
+            letter-spacing: 2px;
+            text-shadow: 0 0 16px rgba(0, 255, 255, 0.3);
+            text-transform: uppercase;
         }
 
         #info p {
             margin: var(--space-1) 0;
-            font-size: var(--font-size-sm);
-            color: var(--color-text-secondary);
+            font-size: var(--font-size-xs);
+            color: rgba(255, 255, 255, 0.6);
             line-height: var(--line-height-base);
+        }
+
+        #info p b {
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
         }
 
         #controls {
             position: absolute;
             top: var(--space-6);
             right: var(--space-6);
-            background: linear-gradient(152deg, rgba(9, 20, 52, 0.84), rgba(3, 8, 20, 0.9));
+            background: linear-gradient(152deg, rgba(9, 20, 52, 0.92), rgba(3, 8, 20, 0.95));
             padding: var(--space-6);
             border-radius: var(--radius-xl);
             color: var(--color-text-primary);
             width: 300px;
-            transition: width var(--dur-mid) var(--ease-standard), padding var(--dur-mid) var(--ease-standard), box-shadow var(--dur-mid) var(--ease-standard), border-color var(--dur-mid) var(--ease-standard);
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             max-height: 90vh;
             overflow-y: auto;
             z-index: 100;
             scrollbar-width: thin;
-            scrollbar-color: rgba(0, 255, 255, 0.32) rgba(0, 0, 0, 0.3);
+            scrollbar-color: rgba(0, 255, 255, 0.2) rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.1);
+            box-shadow: 0 16px 64px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
         }
 
         #controls.collapsed {
             width: auto;
             padding: var(--space-3);
-            min-width: 45px;
-            max-width: 45px;
+            min-width: 44px;
+            max-width: 44px;
             overflow: hidden;
             right: var(--space-6);
         }
@@ -204,43 +215,44 @@
         }
 
         #controls::-webkit-scrollbar {
-            width: var(--space-2);
+            width: 4px;
         }
 
         #controls::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: var(--radius-md);
+            background: transparent;
         }
 
         #controls::-webkit-scrollbar-thumb {
-            background: rgba(0, 255, 255, 0.32);
-            border-radius: var(--radius-md);
-            transition: background-color var(--dur-fast) var(--ease-standard);
+            background: rgba(0, 255, 255, 0.15);
+            border-radius: 2px;
         }
 
         #controls::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 255, 255, 0.55);
+            background: rgba(0, 255, 255, 0.3);
         }
 
         #controls h3 {
-            margin: 0 var(--space-3) var(--space-5) 0;
-            color: var(--color-accent);
-            font-size: var(--font-size-lg);
+            margin: 0 var(--space-3) 0 0;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
             font-family: var(--font-family-display);
-            font-weight: 700;
-            border-bottom: 1px solid var(--color-border-soft);
-            padding-bottom: var(--space-3);
+            font-weight: 600;
+            border-bottom: none;
+            padding-bottom: 0;
             line-height: var(--line-height-tight);
             flex: 1;
-            letter-spacing: 0.5px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
         }
 
         .controls-header {
             display: flex;
             align-items: center;
-            margin-bottom: var(--space-5);
+            margin-bottom: var(--space-6);
             position: relative;
             gap: var(--space-2);
+            padding-bottom: var(--space-4);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         #controls.collapsed .controls-header {
@@ -253,99 +265,174 @@
         }
 
         .control-group {
-            margin-bottom: var(--space-5);
+            margin-bottom: var(--space-6);
+            padding-bottom: var(--space-5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .control-group:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+            margin-bottom: 0;
         }
 
         .control-group label,
         .control-group .section-label {
             display: block;
-            margin-bottom: var(--space-1);
+            margin-bottom: var(--space-2);
             font-size: var(--font-size-sm);
-            color: #b3b3b3;
+            color: rgba(255, 255, 255, 0.65);
             line-height: var(--line-height-base);
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .control-group .section-label {
+            font-family: var(--font-family-display);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: rgba(0, 255, 255, 0.5);
+            margin-bottom: var(--space-3);
+            padding-bottom: var(--space-2);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.12);
         }
 
         .control-group .value {
             color: var(--color-accent);
             font-weight: 700;
+            font-family: var(--font-family-mono);
+            font-size: 12px;
         }
 
         input[type="range"] {
             width: 100%;
-            height: 6px;
+            height: 4px;
             -webkit-appearance: none;
             appearance: none;
-            background: linear-gradient(90deg, rgba(0, 255, 255, 0.32), rgba(0, 255, 255, 0.12));
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: linear-gradient(90deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.08));
+            border: none;
             border-radius: var(--radius-pill);
             outline: none;
-            transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+            transition: opacity 0.2s ease;
         }
 
         input[type="range"]:focus-visible {
-            border-color: var(--color-accent);
             box-shadow: var(--focus-ring);
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #001a1a;
-            background: var(--color-accent);
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(0, 255, 255, 0.8);
+            background: var(--color-bg-page);
             border-radius: 50%;
             cursor: pointer;
-            box-shadow: 0 0 8px rgba(0, 255, 255, 0.45);
-            transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3), 0 0 0 3px rgba(0, 255, 255, 0.1);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 12px rgba(0, 255, 255, 0.58);
+            transform: scale(1.15);
+            box-shadow: 0 0 16px rgba(0, 255, 255, 0.5), 0 0 0 4px rgba(0, 255, 255, 0.15);
+            border-color: var(--color-accent);
         }
 
         input[type="range"]::-moz-range-track {
-            height: 6px;
-            background: linear-gradient(90deg, rgba(0, 255, 255, 0.32), rgba(0, 255, 255, 0.12));
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            height: 4px;
+            background: linear-gradient(90deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.08));
+            border: none;
             border-radius: var(--radius-pill);
         }
 
         input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            border: 2px solid #001a1a;
-            background: var(--color-accent);
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(0, 255, 255, 0.8);
+            background: var(--color-bg-page);
             border-radius: 50%;
             cursor: pointer;
-            box-shadow: 0 0 8px rgba(0, 255, 255, 0.45);
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        }
+
+        select {
+            width: 100%;
+            padding: var(--space-3) var(--space-4);
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: rgba(255, 255, 255, 0.85);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-size-sm);
+            font-family: var(--font-family-base);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='rgba(255,255,255,0.5)' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        select:hover {
+            border-color: rgba(0, 255, 255, 0.3);
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        select:focus {
+            border-color: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.1);
+        }
+
+        select option {
+            background: #0a0f24;
+            color: rgba(255, 255, 255, 0.85);
+            padding: 8px;
         }
 
         button {
             width: 100%;
-            padding: var(--space-3);
+            padding: var(--space-3) var(--space-4);
             margin: var(--space-1) 0;
-            background: linear-gradient(135deg, rgba(80, 168, 255, 0.26), rgba(0, 255, 255, 0.08));
-            border: 1px solid rgba(102, 212, 255, 0.75);
-            color: var(--color-accent);
-            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, rgba(80, 168, 255, 0.12), rgba(0, 255, 255, 0.05));
+            border: 1px solid rgba(102, 212, 255, 0.2);
+            color: rgba(255, 255, 255, 0.85);
+            border-radius: var(--radius-md);
             cursor: pointer;
             font-size: var(--font-size-sm);
-            font-weight: 600;
-            letter-spacing: 0.4px;
-            transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+            font-weight: 500;
+            font-family: var(--font-family-base);
+            letter-spacing: 0.3px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.15), transparent);
+            opacity: 0;
+            transition: opacity 0.2s ease;
         }
 
         button:hover {
-            background: linear-gradient(135deg, rgba(102, 210, 255, 0.4), rgba(0, 255, 255, 0.16));
-            border-color: #8be8ff;
-            transform: translateY(-1px) scale(1.01);
-            box-shadow: 0 10px 24px rgba(0, 204, 255, 0.26);
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.18), rgba(0, 200, 255, 0.08));
+            border-color: rgba(0, 255, 255, 0.4);
+            color: var(--color-accent);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0, 255, 255, 0.15), 0 0 0 1px rgba(0, 255, 255, 0.1);
+        }
+
+        button:hover::after {
+            opacity: 1;
         }
 
         button:active {
             transform: translateY(0);
-            box-shadow: none;
+            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.1);
         }
 
         button:focus-visible,
@@ -357,106 +444,165 @@
         }
 
         button.active {
-            background: linear-gradient(130deg, #7ee9ff, #43c7ff);
-            border-color: #9becff;
-            color: #00111b;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.25), rgba(0, 200, 255, 0.12));
+            border-color: rgba(0, 255, 255, 0.6);
+            color: var(--color-accent);
+            text-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
         }
 
         .center-planet-btn {
-            font-size: var(--font-size-sm);
-            padding: var(--space-2);
-            line-height: 1.35;
+            font-size: var(--font-size-xs);
+            padding: var(--space-2) var(--space-3);
+            line-height: 1.3;
+            font-weight: 500;
         }
 
         .center-planet-btn.active {
-            background: var(--color-accent);
-            border-color: var(--color-accent);
-            color: #001111;
-            box-shadow: 0 0 14px rgba(0, 255, 255, 0.35);
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(0, 200, 255, 0.15));
+            border-color: rgba(0, 255, 255, 0.7);
+            color: var(--color-accent);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2), inset 0 0 12px rgba(0, 255, 255, 0.05);
         }
 
         .planet-buttons-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: var(--space-1);
+            gap: var(--space-2);
         }
 
         .collapse-btn {
-            background: transparent;
-            border: none;
-            color: var(--color-accent);
-            font-size: 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 16px;
             cursor: pointer;
-            width: auto;
-            padding: var(--space-1) var(--space-3);
+            width: 28px;
+            height: 28px;
+            padding: 0;
             margin: 0;
-            opacity: 0.75;
-            transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+            opacity: 0.8;
+            transition: all 0.2s ease;
             line-height: 1;
-            height: auto;
             flex-shrink: 0;
-            box-shadow: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
         }
 
         .collapse-btn:hover {
             opacity: 1;
-            color: var(--color-accent-strong);
-            background: transparent;
-            transform: none;
-            box-shadow: none;
+            color: var(--color-accent);
+            background: rgba(0, 255, 255, 0.1);
+            border-color: rgba(0, 255, 255, 0.3);
         }
 
         #controls.collapsed .collapse-btn {
             width: 100%;
-            text-align: center;
+            height: auto;
         }
 
         #lang-toggle {
-            background: linear-gradient(135deg, rgba(115, 171, 255, 0.3), rgba(0, 255, 255, 0.1));
-            border: 1px solid rgba(121, 189, 255, 0.58);
-            color: var(--color-accent);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
             border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+            transition: all 0.2s ease;
             text-align: center;
             width: auto;
-            padding: 6px 12px;
+            padding: 6px 10px;
             margin: 0;
-            font-size: var(--font-size-xs);
-            min-width: 72px;
+            font-size: 10px;
+            font-family: var(--font-family-mono);
+            letter-spacing: 0.5px;
+            min-width: 60px;
             flex-shrink: 0;
+            font-weight: 500;
         }
 
         #lang-toggle:hover {
-            background: linear-gradient(135deg, rgba(136, 198, 255, 0.38), rgba(0, 255, 255, 0.16));
-            border-color: #8be8ff;
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-btn-hover);
+            background: rgba(0, 255, 255, 0.1);
+            border-color: rgba(0, 255, 255, 0.3);
+            color: var(--color-accent);
         }
 
         .checkbox-group {
             display: flex;
             align-items: center;
             margin: var(--space-2) 0;
+            cursor: pointer;
         }
 
         .checkbox-group input[type="checkbox"] {
-            margin-right: var(--space-3);
-            cursor: pointer;
-            accent-color: var(--color-accent);
+            display: none;
         }
 
         .checkbox-group label {
-            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
             cursor: pointer;
             font-size: var(--font-size-sm);
-            color: var(--color-text-secondary);
+            color: rgba(255, 255, 255, 0.75);
+            transition: color 0.2s ease;
+            width: 100%;
+        }
+
+        .checkbox-group label::before {
+            content: '';
+            width: 36px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            position: relative;
+            flex-shrink: 0;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .checkbox-group label::after {
+            content: '';
+            width: 14px;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            left: 3px;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .checkbox-group input[type="checkbox"]:checked + label {
+            color: var(--color-accent);
+        }
+
+        .checkbox-group input[type="checkbox"]:checked + label::before {
+            background: rgba(0, 255, 255, 0.2);
+            border-color: rgba(0, 255, 255, 0.5);
+        }
+
+        .checkbox-group input[type="checkbox"]:checked + label::after {
+            left: calc(100% - 17px);
+            background: var(--color-accent);
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+        }
+
+        .checkbox-group:hover label {
+            color: rgba(255, 255, 255, 0.9);
         }
 
         .shortcuts-note {
-            font-size: var(--font-size-xs) !important;
-            color: var(--color-text-subtle) !important;
-            line-height: 1.5;
+            font-size: 10px !important;
+            color: rgba(255, 255, 255, 0.35) !important;
+            line-height: 1.6;
+            letter-spacing: 0.3px;
+            text-align: center;
+            padding: var(--space-3);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.04);
         }
 
         #speed-indicator {
@@ -464,19 +610,31 @@
             bottom: var(--space-6);
             left: 50%;
             transform: translateX(-50%);
-            background: linear-gradient(140deg, rgba(8, 25, 54, 0.82), rgba(2, 8, 22, 0.78));
-            padding: var(--space-3) var(--space-6);
+            background: linear-gradient(140deg, rgba(8, 25, 54, 0.88), rgba(2, 8, 22, 0.85));
+            padding: var(--space-3) var(--space-7);
             border-radius: var(--radius-pill);
-            color: var(--color-accent);
-            font-size: var(--font-size-md);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: var(--font-size-sm);
             font-weight: 600;
-            border: 1px solid rgba(132, 196, 255, 0.48);
+            font-family: var(--font-family-mono);
+            border: 1px solid rgba(0, 255, 255, 0.2);
             line-height: var(--line-height-tight);
             z-index: 80;
             max-width: min(82vw, 420px);
             text-align: center;
-            letter-spacing: 0.5px;
-            text-shadow: 0 0 12px rgba(0, 255, 255, 0.45);
+            letter-spacing: 1px;
+            text-shadow: 0 0 16px rgba(0, 255, 255, 0.3);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 255, 255, 0.08);
+        }
+
+        #speed-indicator span {
+            color: var(--color-accent);
+            font-family: var(--font-family-display);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
 
         #show-info-btn {
@@ -484,15 +642,17 @@
             bottom: 72px;
             left: 50%;
             transform: translateX(-50%) translateY(6px) scale(0.98);
-            background: linear-gradient(130deg, rgba(127, 208, 255, 0.36), rgba(25, 236, 255, 0.16));
-            border: 1px solid rgba(136, 231, 255, 0.82);
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.12), rgba(0, 200, 255, 0.06));
+            border: 1px solid rgba(0, 255, 255, 0.25);
             color: var(--color-accent);
             border-radius: var(--radius-pill);
-            padding: var(--space-3) var(--space-7);
-            font-size: var(--font-size-md);
+            padding: var(--space-3) var(--space-8);
+            font-size: var(--font-size-sm);
             font-weight: 600;
+            font-family: var(--font-family-display);
+            letter-spacing: 1px;
             cursor: pointer;
-            transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard), visibility var(--dur-fast) var(--ease-standard);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             width: auto;
             opacity: 0;
             visibility: hidden;
@@ -500,7 +660,9 @@
             z-index: 100;
             max-width: calc(100vw - 32px);
             white-space: nowrap;
-            box-shadow: 0 8px 30px rgba(0, 188, 255, 0.2);
+            box-shadow: 0 4px 20px rgba(0, 255, 255, 0.15), 0 0 0 1px rgba(0, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
 
         #show-info-btn.is-visible {
@@ -511,9 +673,10 @@
         }
 
         #show-info-btn:hover {
-            background: linear-gradient(135deg, rgba(160, 220, 255, 0.5), rgba(50, 250, 255, 0.24));
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 200, 255, 0.1));
+            border-color: rgba(0, 255, 255, 0.5);
             transform: translateX(-50%) translateY(-2px);
-            box-shadow: var(--shadow-btn-hover);
+            box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2), 0 0 0 1px rgba(0, 255, 255, 0.15);
         }
 
         #info-panel {
@@ -521,18 +684,20 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) scale(0.94);
-            background: linear-gradient(160deg, rgba(8, 20, 52, 0.94), rgba(2, 7, 19, 0.95));
+            background: linear-gradient(160deg, rgba(8, 20, 52, 0.96), rgba(2, 7, 19, 0.97));
             padding: var(--space-8);
             border-radius: var(--radius-xl);
             color: var(--color-text-primary);
             width: 380px;
             max-width: calc(100vw - 32px);
-            border: 1px solid rgba(140, 223, 255, 0.7);
-            box-shadow: 0 24px 60px rgba(0, 9, 32, 0.68), 0 0 42px rgba(84, 231, 255, 0.24), inset 0 0 80px rgba(0, 154, 255, 0.08);
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(0, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.05);
             opacity: 0;
             visibility: hidden;
-            transition: opacity var(--dur-mid) var(--ease-emphasized), visibility var(--dur-mid) var(--ease-emphasized), transform var(--dur-mid) var(--ease-emphasized);
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 1000;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
 
         #info-panel.visible {
@@ -542,85 +707,99 @@
         }
 
         #info-panel h2 {
-            margin: 0 0 var(--space-6) 0;
+            margin: 0 0 var(--space-3) 0;
             color: var(--color-accent);
-            font-size: var(--font-size-xl);
+            font-family: var(--font-family-display);
+            font-size: 22px;
             text-align: center;
-            text-shadow: 0 0 16px rgba(0, 255, 255, 0.58);
-            border-bottom: 1px solid rgba(0, 255, 255, 0.25);
-            padding-bottom: var(--space-5);
+            text-shadow: 0 0 24px rgba(0, 255, 255, 0.3);
+            letter-spacing: 2px;
             line-height: var(--line-height-tight);
         }
 
         #info-panel .planet-name-en {
-            font-size: var(--font-size-md);
-            color: var(--color-text-muted);
-            margin-top: calc(-1 * var(--space-5));
+            font-size: var(--font-size-sm);
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 0;
             text-align: center;
             margin-bottom: var(--space-6);
-            letter-spacing: 0.4px;
+            letter-spacing: 1px;
+            font-weight: 300;
         }
 
         #info-panel .info-row {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             gap: var(--space-3);
-            padding: var(--space-3) 0;
-            border-bottom: 1px solid var(--color-border-soft);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.02);
+            margin-bottom: var(--space-2);
+            transition: background 0.2s ease;
+        }
+
+        #info-panel .info-row:hover {
+            background: rgba(255, 255, 255, 0.04);
         }
 
         #info-panel .info-row:last-child {
-            border-bottom: none;
+            margin-bottom: 0;
         }
 
         #info-panel .info-label {
-            color: var(--color-text-muted);
+            color: rgba(255, 255, 255, 0.5);
             font-size: var(--font-size-sm);
             line-height: var(--line-height-base);
+            font-weight: 500;
         }
 
         #info-panel .info-value {
             color: var(--color-accent);
-            font-size: var(--font-size-md);
-            font-weight: 700;
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            font-family: var(--font-family-mono);
             line-height: var(--line-height-base);
             text-align: right;
         }
 
         #info-panel .description {
-            background: linear-gradient(145deg, rgba(76, 166, 255, 0.16), rgba(0, 255, 255, 0.08));
+            background: linear-gradient(145deg, rgba(0, 255, 255, 0.05), rgba(0, 200, 255, 0.02));
             padding: var(--space-5);
             border-radius: var(--radius-md);
             margin-top: var(--space-6);
-            font-size: var(--font-size-md);
-            line-height: 1.65;
-            color: var(--color-text-secondary);
-            border-left: 3px solid var(--color-accent);
-            box-shadow: inset 0 0 22px rgba(80, 190, 255, 0.12);
+            font-size: var(--font-size-sm);
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.7);
+            border-left: 2px solid rgba(0, 255, 255, 0.3);
         }
 
         #info-panel .close-btn {
             position: absolute;
-            top: var(--space-5);
-            right: var(--space-5);
-            background: transparent;
-            border: none;
-            color: var(--color-accent);
-            font-size: 24px;
+            top: var(--space-4);
+            right: var(--space-4);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 18px;
             cursor: pointer;
-            width: auto;
-            padding: var(--space-1) var(--space-3);
+            width: 32px;
+            height: 32px;
+            padding: 0;
             margin: 0;
-            opacity: 0.74;
-            transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: all 0.2s ease;
         }
 
         #info-panel .close-btn:hover {
             opacity: 1;
-            color: var(--color-accent-strong);
-            background: transparent;
-            transform: none;
-            box-shadow: none;
+            color: var(--color-accent);
+            background: rgba(0, 255, 255, 0.1);
+            border-color: rgba(0, 255, 255, 0.3);
         }
 
         #info-panel .actions {
@@ -633,6 +812,7 @@
             flex: 1;
             padding: var(--space-4);
             margin: 0;
+            font-family: var(--font-family-base);
         }
 
         #loading {
@@ -641,24 +821,30 @@
             left: 50%;
             transform: translate(-50%, -50%);
             color: var(--color-accent);
-            font-size: 24px;
+            font-size: 16px;
+            font-family: var(--font-family-display);
+            letter-spacing: 3px;
+            text-transform: uppercase;
             text-align: center;
-            text-shadow: 0 0 18px rgba(0, 255, 255, 0.48);
-            background: linear-gradient(140deg, rgba(7, 18, 42, 0.8), rgba(1, 8, 21, 0.76));
-            padding: var(--space-6);
-            border-radius: var(--radius-lg);
-            border: 1px solid rgba(150, 210, 255, 0.42);
-            box-shadow: var(--shadow-elevation-premium);
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+            background: linear-gradient(140deg, rgba(7, 18, 42, 0.9), rgba(1, 8, 21, 0.88));
+            padding: var(--space-8) var(--space-10);
+            border-radius: var(--radius-xl);
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
         }
 
         #loading .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(0, 255, 255, 0.2);
+            width: 48px;
+            height: 48px;
+            border: 2px solid rgba(0, 255, 255, 0.1);
             border-top-color: var(--color-accent);
             border-radius: 50%;
             margin: 0 auto var(--space-6);
-            animation: spin 1s linear infinite;
+            animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
         }
 
         @media (max-width: 1024px) {
@@ -710,7 +896,7 @@
 
             #controls h3,
             #info h3 {
-                font-size: var(--font-size-md);
+                font-size: 12px;
             }
 
             .control-group label,
@@ -720,7 +906,7 @@
             #info-panel .info-label,
             #info-panel .info-value,
             #info-panel .description {
-                font-size: var(--font-size-sm);
+                font-size: 12px;
             }
 
             .planet-buttons-grid {
@@ -731,11 +917,13 @@
             #show-info-btn {
                 bottom: 74px;
                 padding: var(--space-3) var(--space-6);
+                font-size: 11px;
             }
 
             #speed-indicator {
                 bottom: var(--space-4);
                 padding: var(--space-2) var(--space-5);
+                font-size: 12px;
             }
 
             #info-panel {
@@ -744,7 +932,7 @@
             }
 
             #info-panel h2 {
-                font-size: 22px;
+                font-size: 20px;
                 margin-bottom: var(--space-5);
                 padding-bottom: var(--space-4);
             }
@@ -760,7 +948,7 @@
 
             #info p {
                 margin: 4px 0;
-                font-size: var(--font-size-xs);
+                font-size: 10px;
             }
 
             #controls {
@@ -782,9 +970,9 @@
             }
 
             #lang-toggle {
-                min-width: 64px;
-                padding: 5px 9px;
-                font-size: var(--font-size-xs);
+                min-width: 56px;
+                padding: 5px 8px;
+                font-size: 9px;
             }
 
             .planet-buttons-grid {
@@ -792,21 +980,21 @@
             }
 
             .center-planet-btn {
-                font-size: var(--font-size-xs);
+                font-size: 11px;
             }
 
             #show-info-btn {
                 bottom: 70px;
                 max-width: calc(100vw - 20px);
-                font-size: var(--font-size-xs);
+                font-size: 11px;
                 padding: 9px 14px;
             }
 
             #speed-indicator {
                 bottom: var(--space-3);
                 max-width: calc(100vw - 20px);
-                font-size: var(--font-size-xs);
-                padding: 8px 12px;
+                font-size: 11px;
+                padding: 8px 14px;
             }
 
             #info-panel {
@@ -816,11 +1004,16 @@
             }
 
             #info-panel h2 {
-                font-size: 20px;
+                font-size: 18px;
+                letter-spacing: 1px;
             }
 
             #info-panel .planet-name-en {
-                font-size: var(--font-size-sm);
+                font-size: var(--font-size-xs);
+            }
+
+            #info-panel .info-row {
+                padding: var(--space-2) var(--space-3);
             }
 
             #info-panel .actions {
@@ -850,9 +1043,9 @@
 
             #show-info-btn:hover,
             button:hover,
-            #lang-toggle:hover {
+            #lang-toggle:hover,
+            .collapse-btn:hover {
                 transform: none;
-                box-shadow: none;
             }
 
             body::before {
@@ -867,17 +1060,17 @@
         @keyframes hudFloat {
             0%,
             100% { transform: translateY(0); }
-            50% { transform: translateY(-4px); }
+            50% { transform: translateY(-3px); }
         }
 
         @keyframes auroraShift {
             0% {
                 transform: translate3d(-1.5%, -1.5%, 0) scale(1);
-                filter: saturate(115%);
+                filter: saturate(110%);
             }
             100% {
-                transform: translate3d(1.5%, 1.5%, 0) scale(1.04);
-                filter: saturate(128%);
+                transform: translate3d(1.5%, 1.5%, 0) scale(1.03);
+                filter: saturate(120%);
             }
         }
     </style>
@@ -973,7 +1166,11 @@
     </div>
 
     <div id="speed-indicator"><span data-i18n="speed">Speed</span>: 1.0x</div>
-    <div id="perf-stats" style="position:absolute;left:20px;bottom:20px;z-index:95;background:rgba(0,0,0,0.72);border:1px solid rgba(0,255,255,0.35);color:#9efcff;padding:8px 10px;border-radius:8px;font-size:12px;font-family:Consolas,monospace;line-height:1.4;display:none;pointer-events:none;white-space:pre;">FPS: --\nFrame: -- ms\nCalls: --\nTris: --\nGeoms: --</div>
+    <div id="perf-stats" style="position:absolute;left:20px;bottom:20px;z-index:95;background:rgba(0,0,0,0.8);border:1px solid rgba(0,255,255,0.15);color:rgba(255,255,255,0.7);padding:10px 14px;border-radius:10px;font-size:11px;font-family:var(--font-family-mono);line-height:1.6;display:none;pointer-events:none;white-space:pre;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.3);">FPS: --
+Frame: -- ms
+Calls: --
+Tris: --
+Geoms: --</div>
     
     <button id="show-info-btn" data-i18n="showDetails">📋 Show Details</button>
     
@@ -1295,7 +1492,7 @@
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.shadowMap.autoUpdate = true;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.16;
+        renderer.toneMappingExposure = 1.3;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.body.appendChild(renderer.domElement);
 
@@ -1364,22 +1561,22 @@
         }
 
         // --- 2. 真实光照系统 ---
-        // 太阳光源（点光源）
-        const sunLight = new THREE.PointLight(0xffffff, 4, 5000);
+        // 太阳光源（点光源）- PBR材质需要更强的光源
+        const sunLight = new THREE.PointLight(0xfff5e0, 3.5, 6000);
         sunLight.position.set(0, 0, 0);
         sunLight.castShadow = true;
         sunLight.shadow.mapSize.width = config.shadowMapSize[config.qualityMode];
         sunLight.shadow.mapSize.height = config.shadowMapSize[config.qualityMode];
         sunLight.shadow.camera.near = 0.5;
-        sunLight.shadow.camera.far = 5000;
+        sunLight.shadow.camera.far = 6000;
         scene.add(sunLight);
 
-        // 环境光（模拟星际背景散射）- 提升暗部可见性
-        const ambientLight = new THREE.AmbientLight(0x6f7480, 1.35);
+        // 环境光（模拟星际背景散射）
+        const ambientLight = new THREE.AmbientLight(0x404860, 0.8);
         scene.add(ambientLight);
 
         // 辅助补光（避免背光面过暗）
-        const fillLight = new THREE.DirectionalLight(0x9db9ff, 0.35);
+        const fillLight = new THREE.DirectionalLight(0x9db9ff, 0.25);
         fillLight.position.set(300, 180, -220);
         scene.add(fillLight);
 
@@ -1433,155 +1630,413 @@
         createStarfield();
 
         // --- 5. 程序化纹理生成 ---
-        function createPlanetTexture(baseColor, secondaryColor, pattern = 'noise') {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            
-            // 基础颜色
-            ctx.fillStyle = baseColor;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            if (pattern === 'noise') {
-                // 噪声纹理
-                for (let i = 0; i < 5000; i++) {
-                    const x = Math.random() * canvas.width;
-                    const y = Math.random() * canvas.height;
-                    const size = Math.random() * 3 + 1;
-                    ctx.fillStyle = secondaryColor;
-                    ctx.globalAlpha = Math.random() * 0.3 + 0.1;
-                    ctx.beginPath();
-                    ctx.arc(x, y, size, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else if (pattern === 'bands') {
-                // 条带纹理（适用于木星、土星）
-                const bands = 8;
-                for (let i = 0; i < bands; i++) {
-                    const y = (i / bands) * canvas.height;
-                    const height = (canvas.height / bands) * (0.8 + Math.random() * 0.4);
-                    ctx.fillStyle = i % 2 === 0 ? secondaryColor : baseColor;
-                    ctx.globalAlpha = 0.6;
-                    ctx.fillRect(0, y, canvas.width, height);
-                }
-                // 添加 turbulence
-                for (let i = 0; i < 100; i++) {
-                    const x = Math.random() * canvas.width;
-                    const y = Math.random() * canvas.height;
-                    const size = Math.random() * 20 + 5;
-                    ctx.fillStyle = Math.random() > 0.5 ? secondaryColor : baseColor;
-                    ctx.globalAlpha = 0.3;
-                    ctx.beginPath();
-                    ctx.ellipse(x, y, size, size * 0.3, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else if (pattern === 'craters') {
-                // 陨石坑纹理（适用于月球、水星）
-                for (let i = 0; i < 50; i++) {
-                    const x = Math.random() * canvas.width;
-                    const y = Math.random() * canvas.height;
-                    const size = Math.random() * 10 + 2;
-                    ctx.fillStyle = secondaryColor;
-                    ctx.globalAlpha = 0.4;
-                    ctx.beginPath();
-                    ctx.arc(x, y, size, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else if (pattern === 'continents') {
-                // 大陆纹理（适用于地球）
-                ctx.fillStyle = baseColor;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // 简化的陆地形状
-                ctx.fillStyle = secondaryColor;
-                ctx.globalAlpha = 0.7;
-                for (let i = 0; i < 20; i++) {
-                    const x = Math.random() * canvas.width;
-                    const y = Math.random() * canvas.height;
-                    const size = Math.random() * 60 + 30;
-                    ctx.beginPath();
-                    for (let j = 0; j < 8; j++) {
-                        const angle = (j / 8) * Math.PI * 2;
-                        const radius = size * (0.5 + Math.random() * 0.5);
-                        const px = x + Math.cos(angle) * radius;
-                        const py = y + Math.sin(angle) * radius;
-                        if (j === 0) ctx.moveTo(px, py);
-                        else ctx.lineTo(px, py);
-                    }
-                    ctx.closePath();
-                    ctx.fill();
-                }
-                
-                // 云层
-                ctx.fillStyle = '#ffffff';
-                ctx.globalAlpha = 0.3;
-                for (let i = 0; i < 30; i++) {
-                    const x = Math.random() * canvas.width;
-                    const y = Math.random() * canvas.height;
-                    const size = Math.random() * 40 + 10;
-                    ctx.beginPath();
-                    ctx.ellipse(x, y, size * 2, size, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else if (pattern === 'storms') {
-                // 风暴纹理（适用于木星大红斑）
-                ctx.fillStyle = baseColor;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // 条带
-                const bands = 6;
-                for (let i = 0; i < bands; i++) {
-                    const y = (i / bands) * canvas.height;
-                    ctx.fillStyle = i % 2 === 0 ? secondaryColor : baseColor;
-                    ctx.globalAlpha = 0.5;
-                    ctx.fillRect(0, y, canvas.width, canvas.height / bands);
-                }
-                
-                // 大红斑
-                ctx.fillStyle = '#CC3300';
-                ctx.globalAlpha = 0.6;
-                ctx.beginPath();
-                ctx.ellipse(canvas.width * 0.6, canvas.height * 0.6, 50, 30, 0, 0, Math.PI * 2);
-                ctx.fill();
+        // --- 写实纹理生成系统 ---
+        // 基于值噪声的多层程序化纹理
+
+        // 值噪声 (Value Noise)
+        const _noisePermutation = new Uint8Array(512);
+        (function initNoise() {
+            const p = new Uint8Array(256);
+            for (let i = 0; i < 256; i++) p[i] = i;
+            for (let i = 255; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [p[i], p[j]] = [p[j], p[i]];
             }
-            
-            ctx.globalAlpha = 1.0;
+            for (let i = 0; i < 512; i++) _noisePermutation[i] = p[i & 255];
+        })();
+
+        function _fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+        function _lerp(a, b, t) { return a + t * (b - a); }
+
+        function valueNoise2D(x, y) {
+            const xi = Math.floor(x) & 255;
+            const yi = Math.floor(y) & 255;
+            const xf = x - Math.floor(x);
+            const yf = y - Math.floor(y);
+            const u = _fade(xf);
+            const v = _fade(yf);
+            const aa = _noisePermutation[_noisePermutation[xi] + yi] / 255;
+            const ab = _noisePermutation[_noisePermutation[xi] + yi + 1] / 255;
+            const ba = _noisePermutation[_noisePermutation[xi + 1] + yi] / 255;
+            const bb = _noisePermutation[_noisePermutation[xi + 1] + yi + 1] / 255;
+            return _lerp(_lerp(aa, ba, u), _lerp(ab, bb, u), v);
+        }
+
+        // 分形布朗运动 (fBM)
+        function fbm(x, y, octaves = 6, lacunarity = 2.0, gain = 0.5) {
+            let value = 0, amplitude = 0.5, frequency = 1.0;
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * valueNoise2D(x * frequency, y * frequency);
+                amplitude *= gain;
+                frequency *= lacunarity;
+            }
+            return value;
+        }
+
+        // 扰动域扭曲
+        function warpedNoise(x, y, warpStrength = 0.4) {
+            const qx = fbm(x, y, 4);
+            const qy = fbm(x + 5.2, y + 1.3, 4);
+            return fbm(x + warpStrength * qx, y + warpStrength * qy, 5);
+        }
+
+        // 读取像素
+        function getPixel(imgData, x, y) {
+            const i = (y * imgData.width + x) * 4;
+            return [imgData.data[i], imgData.data[i + 1], imgData.data[i + 2], imgData.data[i + 3]];
+        }
+
+        // 设置像素
+        function setPixel(imgData, x, y, r, g, b, a = 255) {
+            const i = (y * imgData.width + x) * 4;
+            imgData.data[i] = Math.max(0, Math.min(255, r));
+            imgData.data[i + 1] = Math.max(0, Math.min(255, g));
+            imgData.data[i + 2] = Math.max(0, Math.min(255, b));
+            imgData.data[i + 3] = a;
+        }
+
+        // 颜色插值
+        function lerpColor(c1, c2, t) {
+            t = Math.max(0, Math.min(1, t));
+            return [
+                c1[0] + (c2[0] - c1[0]) * t,
+                c1[1] + (c2[1] - c1[1]) * t,
+                c1[2] + (c2[2] - c1[2]) * t
+            ];
+        }
+
+        // === 水星：灰色陨石坑密布的表面 ===
+        function generateMercuryTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const baseColors = [[160,155,150], [140,135,130], [120,115,112]];
+            const darkColors = [[90,85,80], [75,70,65], [65,60,55]];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 8; const ny = y / h * 4;
+                    const base = fbm(nx, ny, 6, 2.1, 0.48);
+                    const detail = fbm(nx * 4, ny * 4, 4, 2.0, 0.45);
+                    const ci = Math.floor(base * baseColors.length * 0.99);
+                    let c = lerpColor(baseColors[ci], baseColors[Math.min(ci + 1, baseColors.length - 1)], base * baseColors.length - ci);
+                    // 陨石坑
+                    const craterNoise = fbm(nx * 6, ny * 6, 3, 2.5, 0.55);
+                    if (craterNoise > 0.62) {
+                        const craterDepth = (craterNoise - 0.62) / 0.38;
+                        const craterEdge = craterDepth < 0.2 ? craterDepth * 5 : (1 - (craterDepth - 0.2) / 0.8) * 0.6;
+                        const di = Math.floor(craterDepth * darkColors.length * 0.99);
+                        const dc = lerpColor(darkColors[di], darkColors[Math.min(di + 1, darkColors.length - 1)], craterDepth);
+                        c = lerpColor(c, dc, craterEdge * 0.65);
+                    }
+                    // 细节噪点
+                    c[0] += (detail - 0.5) * 20;
+                    c[1] += (detail - 0.5) * 18;
+                    c[2] += (detail - 0.5) * 16;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
             return new THREE.CanvasTexture(canvas);
         }
 
-        function createSunTexture() {
+        // === 金星：厚重的硫酸云层 ===
+        function generateVenusTexture(w, h) {
             const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 256;
+            canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
-
-            // 基础颜色
-            const gradient = ctx.createRadialGradient(
-                canvas.width / 2, canvas.height / 2, 0,
-                canvas.width / 2, canvas.height / 2, canvas.width / 2
-            );
-            gradient.addColorStop(0, '#FFFFFF');
-            gradient.addColorStop(0.3, '#FFFF00');
-            gradient.addColorStop(0.6, '#FFAA00');
-            gradient.addColorStop(1, '#FF6600');
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 添加太阳黑子
-            for (let i = 0; i < 15; i++) {
-                const x = Math.random() * canvas.width;
-                const y = Math.random() * canvas.height;
-                const size = Math.random() * 8 + 2;
-                ctx.fillStyle = '#CC4400';
-                ctx.globalAlpha = 0.4;
-                ctx.beginPath();
-                ctx.ellipse(x, y, size, size * 0.6, 0, 0, Math.PI * 2);
-                ctx.fill();
+            const imgData = ctx.createImageData(w, h);
+            const warmBase = [210, 170, 100];
+            const warmDark = [170, 120, 60];
+            const warmLight = [240, 210, 150];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 6; const ny = y / h * 3;
+                    const swirl = warpedNoise(nx, ny, 0.6);
+                    const cloud = fbm(nx * 2 + swirl * 2, ny * 1.5 + swirl, 5, 2.0, 0.52);
+                    const detail = fbm(nx * 8, ny * 8, 3, 2.2, 0.4);
+                    let c;
+                    if (cloud > 0.55) {
+                        c = lerpColor(warmBase, warmLight, (cloud - 0.55) / 0.45);
+                    } else {
+                        c = lerpColor(warmDark, warmBase, cloud / 0.55);
+                    }
+                    c[0] += (detail - 0.5) * 18;
+                    c[1] += (detail - 0.5) * 14;
+                    c[2] += (detail - 0.5) * 10;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
             }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
 
-            ctx.globalAlpha = 1.0;
+        // === 地球：大陆、海洋、冰盖 ===
+        function generateEarthTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const oceanDeep = [15, 40, 120];
+            const oceanShallow = [30, 80, 160];
+            const landGreen = [40, 110, 35];
+            const landBrown = [120, 95, 50];
+            const desert = [180, 160, 100];
+            const ice = [230, 240, 250];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 8; const ny = y / h * 4;
+                    const continent = fbm(nx + 1.7, ny + 3.2, 6, 2.0, 0.48);
+                    const detail = fbm(nx * 6, ny * 6, 4, 2.2, 0.42);
+                    const latitude = Math.abs(y / h - 0.5) * 2;
+                    let c;
+                    if (continent > 0.52) {
+                        // 陆地
+                        const landType = fbm(nx * 3, ny * 3, 3, 2.0, 0.5);
+                        if (latitude > 0.75) {
+                            c = lerpColor(landBrown, ice, (latitude - 0.75) / 0.25);
+                        } else if (landType > 0.6) {
+                            c = lerpColor(landGreen, desert, (landType - 0.6) / 0.4);
+                        } else {
+                            c = lerpColor(landGreen, landBrown, landType);
+                        }
+                    } else {
+                        // 海洋
+                        const depth = 0.52 - continent;
+                        c = lerpColor(oceanShallow, oceanDeep, depth / 0.52);
+                        if (latitude > 0.8) {
+                            c = lerpColor(c, ice, (latitude - 0.8) / 0.2 * 0.5);
+                        }
+                    }
+                    c[0] += (detail - 0.5) * 12;
+                    c[1] += (detail - 0.5) * 12;
+                    c[2] += (detail - 0.5) * 10;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // === 火星：红色沙漠、暗色岩石、极冠 ===
+        function generateMarsTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const rustRed = [180, 80, 35];
+            const darkRock = [100, 55, 30];
+            const brightSand = [210, 130, 70];
+            const polarIce = [220, 215, 210];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 8; const ny = y / h * 4;
+                    const terrain = fbm(nx, ny, 6, 2.1, 0.5);
+                    const detail = fbm(nx * 5, ny * 5, 4, 2.0, 0.45);
+                    const latitude = Math.abs(y / h - 0.5) * 2;
+                    let c;
+                    if (latitude > 0.82) {
+                        c = lerpColor(rustRed, polarIce, (latitude - 0.82) / 0.18);
+                    } else if (terrain > 0.58) {
+                        c = lerpColor(rustRed, brightSand, (terrain - 0.58) / 0.42);
+                    } else if (terrain < 0.38) {
+                        c = lerpColor(darkRock, rustRed, terrain / 0.38);
+                    } else {
+                        c = lerpColor(darkRock, rustRed, terrain);
+                    }
+                    // 大峡谷纹理
+                    const canyon = fbm(nx * 10 + 2.3, ny * 3 + 1.1, 3, 2.5, 0.5);
+                    if (canyon > 0.72 && latitude < 0.6) {
+                        c = lerpColor(c, [60, 30, 15], (canyon - 0.72) / 0.28 * 0.5);
+                    }
+                    c[0] += (detail - 0.5) * 16;
+                    c[1] += (detail - 0.5) * 10;
+                    c[2] += (detail - 0.5) * 8;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // === 木星：条带、大红斑、涡旋 ===
+        function generateJupiterTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const bandColors = [
+                [180, 140, 100], [200, 160, 120], [160, 110, 70],
+                [210, 180, 140], [170, 120, 80], [195, 155, 110],
+                [150, 100, 65], [205, 170, 130]
+            ];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 6; const ny = y / h * 4;
+                    // 带状扰动
+                    const warp = fbm(nx * 0.5, ny * 2, 4, 2.0, 0.5) * 0.3;
+                    const bandY = ny + warp;
+                    const bandIdx = Math.floor(((bandY % 4 + 4) % 4) / 4 * bandColors.length);
+                    const bandT = ((bandY % 4 + 4) % 4) / 4 * bandColors.length - bandIdx;
+                    const c1 = bandColors[bandIdx % bandColors.length];
+                    const c2 = bandColors[(bandIdx + 1) % bandColors.length];
+                    let c = lerpColor(c1, c2, bandT);
+                    // 涡旋细节
+                    const vortex = fbm(nx * 4 + warp * 3, ny * 4, 5, 2.2, 0.48);
+                    c[0] += (vortex - 0.5) * 24;
+                    c[1] += (vortex - 0.5) * 18;
+                    c[2] += (vortex - 0.5) * 14;
+                    // 大红斑 (位于约60%宽度, 58%高度)
+                    const spotX = (x / w - 0.62); const spotY = (y / h - 0.58);
+                    const spotDist = Math.sqrt(spotX * spotX * 4 + spotY * spotY * 16);
+                    if (spotDist < 1.0) {
+                        const spotIntensity = (1 - spotDist) * (1 - spotDist);
+                        const spotColor = lerpColor([190, 80, 40], [220, 120, 60], spotDist);
+                        c = lerpColor(c, spotColor, spotIntensity * 0.7);
+                    }
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // === 土星：柔和的带状纹理 ===
+        function generateSaturnTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const bandColors = [
+                [210, 190, 140], [225, 205, 155], [195, 175, 125],
+                [230, 215, 165], [200, 180, 130], [220, 200, 150],
+                [190, 170, 120], [215, 195, 145]
+            ];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 6; const ny = y / h * 4;
+                    const warp = fbm(nx * 0.4, ny * 1.8, 3, 2.0, 0.45) * 0.2;
+                    const bandY = ny + warp;
+                    const bandIdx = Math.floor(((bandY % 4 + 4) % 4) / 4 * bandColors.length);
+                    const bandT = ((bandY % 4 + 4) % 4) / 4 * bandColors.length - bandIdx;
+                    const c1 = bandColors[bandIdx % bandColors.length];
+                    const c2 = bandColors[(bandIdx + 1) % bandColors.length];
+                    let c = lerpColor(c1, c2, bandT);
+                    const detail = fbm(nx * 3, ny * 3, 4, 2.0, 0.42);
+                    c[0] += (detail - 0.5) * 14;
+                    c[1] += (detail - 0.5) * 12;
+                    c[2] += (detail - 0.5) * 10;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // === 天王星：均匀的青绿色 ===
+        function generateUranusTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const baseColor = [150, 210, 220];
+            const darkColor = [120, 180, 195];
+            const lightColor = [175, 225, 235];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 6; const ny = y / h * 4;
+                    const n = fbm(nx * 2, ny * 2, 4, 2.0, 0.5);
+                    const latitude = Math.abs(y / h - 0.5) * 2;
+                    let c;
+                    if (n > 0.55) {
+                        c = lerpColor(baseColor, lightColor, (n - 0.55) / 0.45);
+                    } else {
+                        c = lerpColor(darkColor, baseColor, n / 0.55);
+                    }
+                    // 极淡的纬度带
+                    const bandFade = Math.sin(y / h * Math.PI * 8) * 0.04;
+                    c[0] += bandFade * 255;
+                    c[1] += bandFade * 255;
+                    c[2] += bandFade * 255;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // === 海王星：深蓝色、暗斑 ===
+        function generateNeptuneTexture(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const deepBlue = [30, 50, 160];
+            const midBlue = [50, 80, 190];
+            const brightBlue = [70, 110, 220];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 6; const ny = y / h * 4;
+                    const n = fbm(nx * 2.5, ny * 2, 5, 2.1, 0.48);
+                    const detail = fbm(nx * 5, ny * 5, 3, 2.0, 0.4);
+                    let c;
+                    if (n > 0.58) {
+                        c = lerpColor(midBlue, brightBlue, (n - 0.58) / 0.42);
+                    } else {
+                        c = lerpColor(deepBlue, midBlue, n / 0.58);
+                    }
+                    // 暗斑
+                    const spotX = (x / w - 0.35); const spotY = (y / h - 0.45);
+                    const spotDist = Math.sqrt(spotX * spotX * 6 + spotY * spotY * 20);
+                    if (spotDist < 1.0) {
+                        c = lerpColor(c, [20, 30, 100], (1 - spotDist) * 0.4);
+                    }
+                    c[0] += (detail - 0.5) * 14;
+                    c[1] += (detail - 0.5) * 16;
+                    c[2] += (detail - 0.5) * 20;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // === 太阳：炽热的等离子体表面 ===
+        function createSunTexture() {
+            const w = 1024, h = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const hotWhite = [255, 255, 220];
+            const hotYellow = [255, 220, 50];
+            const orange = [255, 140, 20];
+            const darkOrange = [200, 80, 10];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 8; const ny = y / h * 4;
+                    const n1 = fbm(nx, ny, 5, 2.0, 0.5);
+                    const n2 = fbm(nx * 3 + 5.3, ny * 3 + 1.7, 4, 2.2, 0.45);
+                    const convection = warpedNoise(nx * 0.8, ny * 0.8, 0.5);
+                    const brightness = n1 * 0.5 + convection * 0.3 + n2 * 0.2;
+                    let c;
+                    if (brightness > 0.65) {
+                        c = lerpColor(hotYellow, hotWhite, (brightness - 0.65) / 0.35);
+                    } else if (brightness > 0.4) {
+                        c = lerpColor(orange, hotYellow, (brightness - 0.4) / 0.25);
+                    } else {
+                        c = lerpColor(darkOrange, orange, brightness / 0.4);
+                    }
+                    // 太阳黑子
+                    const spotX = (x / w - 0.42); const spotY = (y / h - 0.55);
+                    const spotDist = Math.sqrt(spotX * spotX * 8 + spotY * spotY * 30);
+                    if (spotDist < 1.0) {
+                        c = lerpColor(c, [80, 30, 0], (1 - spotDist) * 0.55);
+                    }
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
             return new THREE.CanvasTexture(canvas);
         }
 
@@ -1589,47 +2044,125 @@
             return `#${value.toString(16).padStart(6, '0')}`;
         }
 
+        // === 土星环：写实的环缝与带状结构 ===
         function createRingTexture() {
+            const w = 2048, h = 128;
             const canvas = document.createElement('canvas');
-            canvas.width = 1024;
-            canvas.height = 64;
+            canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
-
-            const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-            gradient.addColorStop(0.0, 'rgba(210, 180, 120, 0)');
-            gradient.addColorStop(0.15, 'rgba(220, 195, 140, 0.35)');
-            gradient.addColorStop(0.5, 'rgba(244, 224, 170, 0.78)');
-            gradient.addColorStop(0.82, 'rgba(208, 180, 125, 0.3)');
-            gradient.addColorStop(1.0, 'rgba(180, 150, 100, 0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            for (let i = 0; i < 240; i++) {
-                const x = Math.random() * canvas.width;
-                const w = Math.random() * 6 + 1;
-                const alpha = 0.08 + Math.random() * 0.18;
-                ctx.fillStyle = `rgba(255, 245, 210, ${alpha})`;
-                ctx.fillRect(x, 0, w, canvas.height);
+            const imgData = ctx.createImageData(w, h);
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const t = x / w;
+                    // C环、B环、A环结构
+                    let alpha = 0, r = 180, g = 160, b = 120;
+                    if (t > 0.05 && t < 0.12) { alpha = 0.15; r = 140; g = 130; b = 100; } // C环
+                    else if (t > 0.14 && t < 0.42) { alpha = 0.75; r = 210; g = 195; b = 155; } // B环
+                    else if (t > 0.44 && t < 0.55) { alpha = 0.3; r = 170; g = 155; b = 115; } // 卡西尼缝
+                    else if (t > 0.55 && t < 0.82) { alpha = 0.6; r = 200; g = 185; b = 145; } // A环
+                    else if (t > 0.84 && t < 0.88) { alpha = 0.25; r = 150; g = 140; b = 105; } // 恩克缝
+                    else if (t > 0.88 && t < 0.95) { alpha = 0.35; r = 180; g = 165; b = 125; } // F环
+                    if (alpha > 0) {
+                        const n = fbm(x / w * 40, y / h * 4, 3, 2.0, 0.45);
+                        r += (n - 0.5) * 30;
+                        g += (n - 0.5) * 25;
+                        b += (n - 0.5) * 20;
+                        alpha *= 0.7 + n * 0.3;
+                    }
+                    setPixel(imgData, x, y, r, g, b, Math.floor(alpha * 255));
+                }
             }
-
+            ctx.putImageData(imgData, 0, 0);
             const texture = new THREE.CanvasTexture(canvas);
             texture.wrapS = THREE.ClampToEdgeWrapping;
             texture.wrapT = THREE.ClampToEdgeWrapping;
             return texture;
         }
 
+        // === 地球云层纹理 ===
+        function createEarthCloudTexture() {
+            const w = 1024, h = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 6; const ny = y / h * 3;
+                    const cloud = fbm(nx * 1.5, ny * 1.5, 5, 2.0, 0.5);
+                    const wispy = fbm(nx * 4 + 3.1, ny * 4 + 2.7, 3, 2.2, 0.4);
+                    const alpha = cloud > 0.5 ? (cloud - 0.5) * 2 * (0.6 + wispy * 0.4) : 0;
+                    setPixel(imgData, x, y, 240, 248, 255, Math.floor(alpha * 180));
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // 纹理生成器映射表
+        const textureGenerators = {
+            Mercury: generateMercuryTexture,
+            Venus: generateVenusTexture,
+            Earth: generateEarthTexture,
+            Mars: generateMarsTexture,
+            Jupiter: generateJupiterTexture,
+            Saturn: generateSaturnTexture,
+            Uranus: generateUranusTexture,
+            Neptune: generateNeptuneTexture
+        };
+
+        function createPlanetTexture(nameEn) {
+            const gen = textureGenerators[nameEn];
+            if (gen) return gen(1024, 512);
+            // fallback
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#888888';
+            ctx.fillRect(0, 0, 256, 128);
+            return new THREE.CanvasTexture(canvas);
+        }
+
         function getPlanetVisualPreset(nameEn) {
             const presets = {
-                Mercury: { emissiveIntensity: 0.32, shininess: 34, specular: 0x888888 },
-                Venus: { emissiveIntensity: 0.4, shininess: 56, specular: 0xb3a07a, atmosphere: { color: 0xffd9a8, opacity: 0.26, scale: 1.06 } },
-                Earth: { emissiveIntensity: 0.42, shininess: 88, specular: 0xb9ddff, atmosphere: { color: 0x66ccff, opacity: 0.24, scale: 1.08 }, cloud: { opacity: 0.3, scale: 1.03 } },
-                Mars: { emissiveIntensity: 0.36, shininess: 42, specular: 0xbb8d6a },
-                Jupiter: { emissiveIntensity: 0.4, shininess: 50, specular: 0xc6a588 },
-                Saturn: { emissiveIntensity: 0.38, shininess: 50, specular: 0xd7bb88 },
-                Uranus: { emissiveIntensity: 0.42, shininess: 62, specular: 0xbce6f0, atmosphere: { color: 0x8ce8ff, opacity: 0.26, scale: 1.06 } },
-                Neptune: { emissiveIntensity: 0.44, shininess: 66, specular: 0x90b7ff, atmosphere: { color: 0x6d8cff, opacity: 0.26, scale: 1.06 } }
+                Mercury: {
+                    roughness: 0.85, metalness: 0.1, emissiveIntensity: 0.04,
+                    atmosphere: null, cloud: null
+                },
+                Venus: {
+                    roughness: 0.7, metalness: 0.05, emissiveIntensity: 0.06,
+                    atmosphere: { color: 0xffd9a8, opacity: 0.22, scale: 1.06 },
+                    cloud: null
+                },
+                Earth: {
+                    roughness: 0.65, metalness: 0.05, emissiveIntensity: 0.03,
+                    atmosphere: { color: 0x66ccff, opacity: 0.2, scale: 1.08 },
+                    cloud: { opacity: 0.35, scale: 1.02 }
+                },
+                Mars: {
+                    roughness: 0.82, metalness: 0.08, emissiveIntensity: 0.05,
+                    atmosphere: null, cloud: null
+                },
+                Jupiter: {
+                    roughness: 0.55, metalness: 0.02, emissiveIntensity: 0.04,
+                    atmosphere: null, cloud: null
+                },
+                Saturn: {
+                    roughness: 0.6, metalness: 0.02, emissiveIntensity: 0.03,
+                    atmosphere: null, cloud: null
+                },
+                Uranus: {
+                    roughness: 0.55, metalness: 0.02, emissiveIntensity: 0.03,
+                    atmosphere: { color: 0x8ce8ff, opacity: 0.18, scale: 1.05 },
+                    cloud: null
+                },
+                Neptune: {
+                    roughness: 0.55, metalness: 0.02, emissiveIntensity: 0.03,
+                    atmosphere: { color: 0x6d8cff, opacity: 0.18, scale: 1.05 },
+                    cloud: null
+                }
             };
-            return presets[nameEn] || { emissiveIntensity: 0.36, shininess: 48, specular: 0x999999 };
+            return presets[nameEn] || { roughness: 0.7, metalness: 0.05, emissiveIntensity: 0.04, atmosphere: null, cloud: null };
         }
 
         // --- 4. 行星数据（增强版） ---
@@ -1777,26 +2310,54 @@
             description: '太阳系的中心，一颗G型主序星，提供光和热'
         };
 
-        // 创建太阳（纯色，带发光效果）
+        // 创建太阳（写实表面纹理 + 多层光晕）
+        const sunTexture = createSunTexture();
         const sunGeometry = new THREE.SphereGeometry(20, qualityProfile.sun, qualityProfile.sun);
-        const sunMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xFFCC00,
-            transparent: true,
-            opacity: 1.0
+        const sunMaterial = new THREE.MeshBasicMaterial({
+            map: sunTexture,
+            transparent: false,
+            toneMapped: false
         });
         sunObj.mesh = new THREE.Mesh(sunGeometry, sunMaterial);
         sunObj.mesh.position.set(0, 0, 0);
-        
-        // 太阳光晕效果
+
+        // 内层光晕（柔和暖色）
         const sunGlowGeometry = new THREE.SphereGeometry(25, qualityProfile.sunGlow, qualityProfile.sunGlow);
         const sunGlowMaterial = new THREE.MeshBasicMaterial({
             color: 0xFFAA00,
             transparent: true,
-            opacity: 0.3
+            opacity: 0.25,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
         });
         const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
         sunObj.sunGlow = sunGlow;
         sunObj.mesh.add(sunGlow);
+
+        // 中层光晕
+        const sunGlowMidGeometry = new THREE.SphereGeometry(32, 32, 32);
+        const sunGlowMidMaterial = new THREE.MeshBasicMaterial({
+            color: 0xFF6600,
+            transparent: true,
+            opacity: 0.12,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        sunObj.mesh.add(new THREE.Mesh(sunGlowMidGeometry, sunGlowMidMaterial));
+
+        // 外层光晕
+        const sunGlowOuterGeometry = new THREE.SphereGeometry(42, 24, 24);
+        const sunGlowOuterMaterial = new THREE.MeshBasicMaterial({
+            color: 0xFF3300,
+            transparent: true,
+            opacity: 0.05,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        sunObj.mesh.add(new THREE.Mesh(sunGlowOuterGeometry, sunGlowOuterMaterial));
         
         worldGroup.add(sunObj.mesh);
 
@@ -1867,19 +2428,16 @@
             orbit.rotation.x = Math.PI / 2;
             staticOrbits.add(orbit);
 
-            // 创建行星材质（增强纹理与分层）
+            // 创建行星材质（PBR写实材质）
             const visualPreset = getPlanetVisualPreset(data.nameEn);
-            const texture = createPlanetTexture(numberToHexColor(data.color), numberToHexColor(data.secondaryColor), data.texturePattern);
+            const texture = createPlanetTexture(data.nameEn);
 
-            const planetMat = new THREE.MeshPhongMaterial({
-                color: data.color,
+            const planetMat = new THREE.MeshStandardMaterial({
                 map: texture,
+                roughness: visualPreset.roughness,
+                metalness: visualPreset.metalness,
                 emissive: data.emissive,
                 emissiveIntensity: visualPreset.emissiveIntensity,
-                shininess: visualPreset.shininess,
-                specular: visualPreset.specular,
-                transparent: true,
-                opacity: 1,
                 toneMapped: false
             });
 
@@ -1891,35 +2449,49 @@
             mesh.castShadow = true;
             mesh.receiveShadow = true;
 
-            // 大气层（部分行星）
+            // 大气层（部分行星）- 使用自定义发光效果
             if (visualPreset.atmosphere) {
                 const atmosphereGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale, qualityProfile.atmosphere, qualityProfile.atmosphere);
-                const atmosphereMaterial = new THREE.MeshPhongMaterial({
+                const atmosphereMaterial = new THREE.MeshBasicMaterial({
                     color: visualPreset.atmosphere.color,
                     transparent: true,
                     opacity: visualPreset.atmosphere.opacity,
-                    emissive: visualPreset.atmosphere.color,
-                    emissiveIntensity: 0.08,
-                    side: THREE.DoubleSide,
+                    side: THREE.BackSide,
+                    blending: THREE.AdditiveBlending,
                     depthWrite: false
                 });
                 const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
                 atmosphere.userData.isAtmosphereLayer = true;
                 atmosphere.userData.atmosphereScale = visualPreset.atmosphere.scale;
                 mesh.add(atmosphere);
+
+                // 外层光晕
+                const outerGlowGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale * 1.12, qualityProfile.atmosphere, qualityProfile.atmosphere);
+                const outerGlowMaterial = new THREE.MeshBasicMaterial({
+                    color: visualPreset.atmosphere.color,
+                    transparent: true,
+                    opacity: visualPreset.atmosphere.opacity * 0.4,
+                    side: THREE.BackSide,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+                mesh.add(new THREE.Mesh(outerGlowGeometry, outerGlowMaterial));
             }
 
             // 云层（地球）
             let cloudLayer = null;
             if (visualPreset.cloud) {
-                const cloudTexture = createPlanetTexture('#cfefff', '#ffffff', 'noise');
-                const cloudMaterial = new THREE.MeshPhongMaterial({
+                const cloudTexture = createEarthCloudTexture();
+                const cloudMaterial = new THREE.MeshStandardMaterial({
                     map: cloudTexture,
                     transparent: true,
                     opacity: visualPreset.cloud.opacity,
                     depthWrite: false,
-                    shininess: 18,
-                    specular: 0xffffff
+                    roughness: 0.9,
+                    metalness: 0.0,
+                    side: THREE.DoubleSide,
+                    emissive: 0xffffff,
+                    emissiveIntensity: 0.08
                 });
                 cloudLayer = new THREE.Mesh(
                     new THREE.SphereGeometry(data.size * visualPreset.cloud.scale, qualityProfile.cloud, qualityProfile.cloud),
@@ -1932,17 +2504,16 @@
 
             // 土星环
             if (data.hasRings) {
-                const ringGeometry = new THREE.RingGeometry(data.size * 1.35, data.size * 2.35, 96);
-                const ringMaterial = new THREE.MeshPhongMaterial({
-                    color: 0xE8D7A5,
+                const ringGeometry = new THREE.RingGeometry(data.size * 1.35, data.size * 2.35, 128);
+                const ringMaterial = new THREE.MeshStandardMaterial({
                     map: saturnRingTexture,
                     side: THREE.DoubleSide,
                     transparent: true,
-                    opacity: 0.82,
+                    opacity: 0.85,
+                    roughness: 0.75,
+                    metalness: 0.1,
                     emissive: 0x2d2416,
-                    emissiveIntensity: 0.12,
-                    shininess: 18,
-                    specular: 0xb59a67,
+                    emissiveIntensity: 0.06,
                     depthWrite: false
                 });
                 const ring = new THREE.Mesh(ringGeometry, ringMaterial);
