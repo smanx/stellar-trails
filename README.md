@@ -14,8 +14,10 @@ An interactive 3D solar system visualization web application featuring relative 
 - **3D Solar System Rendering**: Complete solar system with Sun and 8 planets
 - **Interactive Reference Frame Switching**: Click any planet to center your view on it
 - **Dynamic Motion Trails**: Visualize orbital paths relative to the selected reference center
+- **Earth's Moon**: An orbiting moon with its own motion trail (visible from Earth's reference frame)
+- **Realistic Axial Tilts**: Each planet spins on a tilted axis based on real astronomical data (Uranus rolls on its side, with faint vertical rings)
 - **Procedural Textures**: Unique texture patterns for each celestial body
-- **Realistic Lighting System**: Point light from Sun + ambient light with shadow support
+- **Realistic Lighting System**: Point light from Sun with no falloff (evenly illuminates all planets) + ambient/hemisphere lights with shadow support
 - **Bilingual Support**: English and Chinese with automatic language detection
 
 ### Controls
@@ -195,11 +197,11 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 Each planet features unique procedurally generated textures:
 - **Mercury**: Crater pattern
 - **Venus**: Noise pattern
-- **Earth**: Continent pattern with clouds
-- **Mars**: Crater pattern
-- **Jupiter**: Storm pattern with Great Red Spot
-- **Saturn**: Banded pattern with rings
-- **Uranus**: Noise pattern
+- **Earth**: Continent pattern with clouds, glossy ocean roughness map, and atmosphere day/night tinting
+- **Mars**: Crater pattern with a thin dusty atmosphere
+- **Jupiter**: Storm pattern with Great Red Spot and subtle clearcoat sheen
+- **Saturn**: Banded pattern with rings and a faint atmosphere
+- **Uranus**: Noise pattern with faint vertical rings
 - **Neptune**: Noise pattern
 
 ### Bilingual Support

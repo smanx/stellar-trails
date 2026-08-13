@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <title>Stellar Trails</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Ccircle cx='60' cy='60' r='56' fill='%23030412'/%3E%3Ccircle cx='60' cy='60' r='20' fill='%2300ffff'/%3E%3Ccircle cx='90' cy='40' r='7' fill='%238ab7ff'/%3E%3C/svg%3E">
+    <!-- 字体加载改为非阻塞：离线/字体不可达时立即回退到系统字体，不影响页面加载 -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap"></noscript>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
-
         :root {
             --font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             --font-family-display: 'Orbitron', 'Inter', sans-serif;
@@ -1522,7 +1523,17 @@ Geoms: --</div>
 
             if (sunObj.sunGlow && sunObj.sunGlow.geometry) {
                 sunObj.sunGlow.geometry.dispose();
-                sunObj.sunGlow.geometry = new THREE.SphereGeometry(25, profile.sunGlow, profile.sunGlow);
+                sunObj.sunGlow.geometry = new THREE.SphereGeometry(46, profile.sunGlow, profile.sunGlow);
+            }
+
+            if (sunObj.sunGlowMid && sunObj.sunGlowMid.geometry) {
+                sunObj.sunGlowMid.geometry.dispose();
+                sunObj.sunGlowMid.geometry = new THREE.SphereGeometry(72, 32, 32);
+            }
+
+            if (sunObj.sunGlowOuter && sunObj.sunGlowOuter.geometry) {
+                sunObj.sunGlowOuter.geometry.dispose();
+                sunObj.sunGlowOuter.geometry = new THREE.SphereGeometry(115, 32, 24);
             }
 
             planets.forEach(p => {
@@ -1561,24 +1572,61 @@ Geoms: --</div>
         }
 
         // --- 2. 真实光照系统 ---
-        // 太阳光源（点光源）- PBR材质需要更强的光源
-        const sunLight = new THREE.PointLight(0xfff5e0, 3.5, 6000);
+        // 太阳光源（点光源）- 关闭距离衰减：让所有行星都被太阳均匀照亮，形成强烈的明暗对比
+        const sunLight = new THREE.PointLight(0xfff2d0, 1.75, 0);
+        sunLight.decay = 0;
         sunLight.position.set(0, 0, 0);
         sunLight.castShadow = true;
         sunLight.shadow.mapSize.width = config.shadowMapSize[config.qualityMode];
         sunLight.shadow.mapSize.height = config.shadowMapSize[config.qualityMode];
         sunLight.shadow.camera.near = 0.5;
         sunLight.shadow.camera.far = 6000;
+        sunLight.shadow.bias = -0.0002;
         scene.add(sunLight);
 
-        // 环境光（模拟星际背景散射）
-        const ambientLight = new THREE.AmbientLight(0x404860, 0.8);
+        // 环境光（模拟星际背景散射）- 降低强度以突出太阳的方向性
+        const ambientLight = new THREE.AmbientLight(0x404860, 0.28);
         scene.add(ambientLight);
 
+        // 天光半球光（增强昼夜过渡的立体感）
+        const hemiLight = new THREE.HemisphereLight(0x8fb4ff, 0x0a0518, 0.3);
+        scene.add(hemiLight);
+
         // 辅助补光（避免背光面过暗）
-        const fillLight = new THREE.DirectionalLight(0x9db9ff, 0.25);
+        const fillLight = new THREE.DirectionalLight(0x9db9ff, 0.12);
         fillLight.position.set(300, 180, -220);
         scene.add(fillLight);
+
+        // 程序化环境反射贴图（为PBR材质提供高光反射来源）
+        function createEnvironmentMap() {
+            const c = document.createElement('canvas');
+            c.width = 256; c.height = 128;
+            const ctx = c.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 0, 128);
+            grad.addColorStop(0, '#3a4a86');
+            grad.addColorStop(0.35, '#16204a');
+            grad.addColorStop(0.7, '#070b22');
+            grad.addColorStop(1, '#02040c');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 256, 128);
+            // 高光点（太阳方向），为海洋/云层/气体行星提供镜面反射
+            const glow = ctx.createRadialGradient(60, 26, 0, 60, 26, 42);
+            glow.addColorStop(0, 'rgba(255,240,200,0.95)');
+            glow.addColorStop(0.35, 'rgba(255,214,150,0.35)');
+            glow.addColorStop(1, 'rgba(255,214,150,0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, 256, 128);
+            // 辅助冷色高光，丰富反射层次
+            const glow2 = ctx.createRadialGradient(190, 90, 0, 190, 90, 48);
+            glow2.addColorStop(0, 'rgba(150,190,255,0.4)');
+            glow2.addColorStop(1, 'rgba(150,190,255,0)');
+            ctx.fillStyle = glow2;
+            ctx.fillRect(0, 0, 256, 128);
+            const tex = new THREE.CanvasTexture(c);
+            tex.mapping = THREE.EquirectangularReflectionMapping;
+            return tex;
+        }
+        scene.environment = createEnvironmentMap();
 
         // --- 3. 星空背景 ---
         function createStarfield() {
@@ -1705,12 +1753,21 @@ Geoms: --</div>
             ];
         }
 
+        // 创建配套的高精度凹凸贴图缓冲（与颜色贴图同分辨率）
+        function createBumpBuffer(w, h) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            return { canvas, ctx, imgData: ctx.createImageData(w, h) };
+        }
+
         // === 水星：灰色陨石坑密布的表面 ===
         function generateMercuryTexture(w, h) {
             const canvas = document.createElement('canvas');
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const baseColors = [[160,155,150], [140,135,130], [120,115,112]];
             const darkColors = [[90,85,80], [75,70,65], [65,60,55]];
             for (let y = 0; y < h; y++) {
@@ -1720,6 +1777,7 @@ Geoms: --</div>
                     const detail = fbm(nx * 4, ny * 4, 4, 2.0, 0.45);
                     const ci = Math.floor(base * baseColors.length * 0.99);
                     let c = lerpColor(baseColors[ci], baseColors[Math.min(ci + 1, baseColors.length - 1)], base * baseColors.length - ci);
+                    let height = 0.35 + base * 0.45 + (detail - 0.5) * 0.4;
                     // 陨石坑
                     const craterNoise = fbm(nx * 6, ny * 6, 3, 2.5, 0.55);
                     if (craterNoise > 0.62) {
@@ -1728,16 +1786,23 @@ Geoms: --</div>
                         const di = Math.floor(craterDepth * darkColors.length * 0.99);
                         const dc = lerpColor(darkColors[di], darkColors[Math.min(di + 1, darkColors.length - 1)], craterDepth);
                         c = lerpColor(c, dc, craterEdge * 0.65);
+                        // 坑缘隆起、坑底凹陷
+                        height += (craterEdge - 0.45) * 0.75;
                     }
                     // 细节噪点
                     c[0] += (detail - 0.5) * 20;
                     c[1] += (detail - 0.5) * 18;
                     c[2] += (detail - 0.5) * 16;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 金星：厚重的硫酸云层 ===
@@ -1746,6 +1811,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const warmBase = [210, 170, 100];
             const warmDark = [170, 120, 60];
             const warmLight = [240, 210, 150];
@@ -1764,11 +1830,17 @@ Geoms: --</div>
                     c[0] += (detail - 0.5) * 18;
                     c[1] += (detail - 0.5) * 14;
                     c[2] += (detail - 0.5) * 10;
+                    const height = 0.42 + (cloud - 0.5) * 0.9 + (detail - 0.5) * 0.45;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 地球：大陆、海洋、冰盖 ===
@@ -1777,6 +1849,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const oceanDeep = [15, 40, 120];
             const oceanShallow = [30, 80, 160];
             const landGreen = [40, 110, 35];
@@ -1790,11 +1863,14 @@ Geoms: --</div>
                     const detail = fbm(nx * 6, ny * 6, 4, 2.2, 0.42);
                     const latitude = Math.abs(y / h - 0.5) * 2;
                     let c;
+                    let height;
                     if (continent > 0.52) {
                         // 陆地
                         const landType = fbm(nx * 3, ny * 3, 3, 2.0, 0.5);
+                        height = 0.62 + (continent - 0.52) * 1.3 + (detail - 0.5) * 0.3;
                         if (latitude > 0.75) {
                             c = lerpColor(landBrown, ice, (latitude - 0.75) / 0.25);
+                            height += 0.08;
                         } else if (landType > 0.6) {
                             c = lerpColor(landGreen, desert, (landType - 0.6) / 0.4);
                         } else {
@@ -1804,18 +1880,25 @@ Geoms: --</div>
                         // 海洋
                         const depth = 0.52 - continent;
                         c = lerpColor(oceanShallow, oceanDeep, depth / 0.52);
+                        height = 0.3 - depth * 0.3 + (detail - 0.5) * 0.25;
                         if (latitude > 0.8) {
                             c = lerpColor(c, ice, (latitude - 0.8) / 0.2 * 0.5);
+                            height += 0.06;
                         }
                     }
                     c[0] += (detail - 0.5) * 12;
                     c[1] += (detail - 0.5) * 12;
                     c[2] += (detail - 0.5) * 10;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 火星：红色沙漠、暗色岩石、极冠 ===
@@ -1824,6 +1907,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const rustRed = [180, 80, 35];
             const darkRock = [100, 55, 30];
             const brightSand = [210, 130, 70];
@@ -1835,8 +1919,10 @@ Geoms: --</div>
                     const detail = fbm(nx * 5, ny * 5, 4, 2.0, 0.45);
                     const latitude = Math.abs(y / h - 0.5) * 2;
                     let c;
+                    let height = 0.42 + terrain * 0.5 + (detail - 0.5) * 0.35;
                     if (latitude > 0.82) {
                         c = lerpColor(rustRed, polarIce, (latitude - 0.82) / 0.18);
+                        height += 0.06;
                     } else if (terrain > 0.58) {
                         c = lerpColor(rustRed, brightSand, (terrain - 0.58) / 0.42);
                     } else if (terrain < 0.38) {
@@ -1848,15 +1934,21 @@ Geoms: --</div>
                     const canyon = fbm(nx * 10 + 2.3, ny * 3 + 1.1, 3, 2.5, 0.5);
                     if (canyon > 0.72 && latitude < 0.6) {
                         c = lerpColor(c, [60, 30, 15], (canyon - 0.72) / 0.28 * 0.5);
+                        height -= (canyon - 0.72) * 0.9;
                     }
                     c[0] += (detail - 0.5) * 16;
                     c[1] += (detail - 0.5) * 10;
                     c[2] += (detail - 0.5) * 8;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 木星：条带、大红斑、涡旋 ===
@@ -1865,6 +1957,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const bandColors = [
                 [180, 140, 100], [200, 160, 120], [160, 110, 70],
                 [210, 180, 140], [170, 120, 80], [195, 155, 110],
@@ -1894,11 +1987,17 @@ Geoms: --</div>
                         const spotColor = lerpColor([190, 80, 40], [220, 120, 60], spotDist);
                         c = lerpColor(c, spotColor, spotIntensity * 0.7);
                     }
+                    const height = 0.5 + (vortex - 0.5) * 0.7 + (warp - 0.5) * 0.35 + Math.sin(bandY * 2.2) * 0.06;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 土星：柔和的带状纹理 ===
@@ -1907,6 +2006,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const bandColors = [
                 [210, 190, 140], [225, 205, 155], [195, 175, 125],
                 [230, 215, 165], [200, 180, 130], [220, 200, 150],
@@ -1926,11 +2026,17 @@ Geoms: --</div>
                     c[0] += (detail - 0.5) * 14;
                     c[1] += (detail - 0.5) * 12;
                     c[2] += (detail - 0.5) * 10;
+                    const height = 0.5 + (detail - 0.5) * 0.7 + Math.sin(bandY * 1.8) * 0.05;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 天王星：均匀的青绿色 ===
@@ -1939,6 +2045,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const baseColor = [150, 210, 220];
             const darkColor = [120, 180, 195];
             const lightColor = [175, 225, 235];
@@ -1958,11 +2065,17 @@ Geoms: --</div>
                     c[0] += bandFade * 255;
                     c[1] += bandFade * 255;
                     c[2] += bandFade * 255;
+                    const height = 0.5 + (n - 0.5) * 0.85 + bandFade * 0.5;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
         }
 
         // === 海王星：深蓝色、暗斑 ===
@@ -1971,6 +2084,7 @@ Geoms: --</div>
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
             const deepBlue = [30, 50, 160];
             const midBlue = [50, 80, 190];
             const brightBlue = [70, 110, 220];
@@ -1994,11 +2108,66 @@ Geoms: --</div>
                     c[0] += (detail - 0.5) * 14;
                     c[1] += (detail - 0.5) * 16;
                     c[2] += (detail - 0.5) * 20;
+                    const height = 0.5 + (n - 0.5) * 0.9 + (detail - 0.5) * 0.5;
                     setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
                 }
             }
             ctx.putImageData(imgData, 0, 0);
-            return new THREE.CanvasTexture(canvas);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            return {
+                map: new THREE.CanvasTexture(canvas),
+                bumpMap: new THREE.CanvasTexture(bump.canvas)
+            };
+        }
+
+        // === 月球：浅灰色的陨石坑表面 ===
+        function createMoonTexture() {
+            const w = 1024, h = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            const bump = createBumpBuffer(w, h);
+            const baseColors = [[200, 200, 198], [185, 185, 184], [170, 170, 170]];
+            const darkColors = [[120, 120, 120], [100, 100, 100], [88, 88, 88]];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const nx = x / w * 8; const ny = y / h * 4;
+                    const base = fbm(nx, ny, 6, 2.1, 0.48);
+                    const detail = fbm(nx * 5, ny * 5, 4, 2.0, 0.45);
+                    const ci = Math.floor(base * baseColors.length * 0.99);
+                    let c = lerpColor(baseColors[ci], baseColors[Math.min(ci + 1, baseColors.length - 1)], base);
+                    let height = 0.5 + (base - 0.5) * 0.5 + (detail - 0.5) * 0.3;
+                    // 陨石坑
+                    const craterNoise = fbm(nx * 6 + 7.3, ny * 6 + 2.1, 3, 2.5, 0.55);
+                    if (craterNoise > 0.6) {
+                        const craterDepth = (craterNoise - 0.6) / 0.4;
+                        const di = Math.floor(craterDepth * darkColors.length * 0.99);
+                        c = lerpColor(darkColors[di], darkColors[Math.min(di + 1, darkColors.length - 1)], craterDepth);
+                        height -= craterDepth * 0.28;
+                    }
+                    // 月海（暗色斑块）
+                    const mare = fbm(nx * 2.2 + 11.4, ny * 2.2 + 5.7, 3, 2.0, 0.5);
+                    if (mare > 0.62) {
+                        c = lerpColor(c, [105, 110, 120], (mare - 0.62) / 0.38 * 0.7);
+                        height -= 0.08;
+                    }
+                    c[0] += (detail - 0.5) * 10;
+                    c[1] += (detail - 0.5) * 10;
+                    c[2] += (detail - 0.5) * 12;
+                    setPixel(imgData, x, y, c[0], c[1], c[2]);
+                    setPixel(bump.imgData, x, y, height * 255, height * 255, height * 255);
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            bump.ctx.putImageData(bump.imgData, 0, 0);
+            const map = new THREE.CanvasTexture(canvas);
+            map.colorSpace = THREE.SRGBColorSpace;
+            map.anisotropy = 4;
+            const bumpMap = new THREE.CanvasTexture(bump.canvas);
+            bumpMap.anisotropy = 4;
+            return { map, bumpMap };
         }
 
         // === 太阳：炽热的等离子体表面 ===
@@ -2079,6 +2248,39 @@ Geoms: --</div>
             return texture;
         }
 
+        // === 天王星淡环：纤细的窄带结构 ===
+        function createFaintRingTexture() {
+            const w = 512, h = 32;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(w, h);
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const t = x / w;
+                    let alpha = 0, r = 190, g = 205, b = 225;
+                    // 两条主带 + 细尘带
+                    if (t > 0.18 && t < 0.3) { alpha = 0.6; }
+                    else if (t > 0.42 && t < 0.5) { alpha = 0.4; }
+                    else if (t > 0.62 && t < 0.66) { alpha = 0.22; }
+                    else if (t > 0.76 && t < 0.8) { alpha = 0.16; }
+                    if (alpha > 0) {
+                        const n = fbm(x / w * 60, y / h * 6, 2, 2.0, 0.5);
+                        r += (n - 0.5) * 18;
+                        g += (n - 0.5) * 18;
+                        b += (n - 0.5) * 20;
+                        alpha *= 0.75 + n * 0.25;
+                    }
+                    setPixel(imgData, x, y, r, g, b, Math.floor(alpha * 255));
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            return texture;
+        }
+
         // === 地球云层纹理 ===
         function createEarthCloudTexture() {
             const w = 1024, h = 512;
@@ -2111,58 +2313,125 @@ Geoms: --</div>
             Neptune: generateNeptuneTexture
         };
 
-        function createPlanetTexture(nameEn) {
+        // 从高度（凹凸）缓冲生成粗糙度贴图：低处更光滑（如地球海洋），高处更粗糙（如陆地）
+        function createRoughnessFromBump(bumpCanvas, roughMin, roughMax, invert) {
+            const w = bumpCanvas.width, h = bumpCanvas.height;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const src = ctx.getImageData(0, 0, w, h);
+            const imgData = ctx.createImageData(w, h);
+            for (let i = 0; i < src.data.length; i += 4) {
+                const hv = src.data[i] / 255;
+                const r = invert
+                    ? roughMin + hv * (roughMax - roughMin)
+                    : roughMax - hv * (roughMax - roughMin);
+                const v = Math.max(0, Math.min(255, Math.floor(r * 255)));
+                imgData.data[i] = v;
+                imgData.data[i + 1] = v;
+                imgData.data[i + 2] = v;
+                imgData.data[i + 3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.ClampToEdgeWrapping;
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        function createPlanetTexture(nameEn, preset) {
             const gen = textureGenerators[nameEn];
-            if (gen) return gen(1024, 512);
+            if (gen) {
+                const result = gen(1024, 512);
+                result.map.colorSpace = THREE.SRGBColorSpace;
+                result.map.anisotropy = 4;
+                result.bumpMap.anisotropy = 4;
+                if (preset && typeof preset.roughMin === 'number') {
+                    result.roughnessMap = createRoughnessFromBump(
+                        result.bumpMap.image,
+                        preset.roughMin,
+                        preset.roughMax,
+                        !!preset.roughInvert
+                    );
+                }
+                return result;
+            }
             // fallback
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 128;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#888888';
             ctx.fillRect(0, 0, 256, 128);
-            return new THREE.CanvasTexture(canvas);
+            const map = new THREE.CanvasTexture(canvas);
+            map.colorSpace = THREE.SRGBColorSpace;
+            return { map, bumpMap: map };
         }
 
         function getPlanetVisualPreset(nameEn) {
             const presets = {
                 Mercury: {
-                    roughness: 0.85, metalness: 0.1, emissiveIntensity: 0.04,
-                    atmosphere: null, cloud: null
+                    roughness: 0.9, metalness: 0.12, emissiveIntensity: 0.05, bumpScale: 0.55,
+                    envMapIntensity: 0.45, clearcoat: 0, clearcoatRoughness: 0.5, specularIntensity: 0.4,
+                    roughMin: 0.8, roughMax: 1.0,
+                    tilt: 0, atmosphere: null, cloud: null
                 },
                 Venus: {
-                    roughness: 0.7, metalness: 0.05, emissiveIntensity: 0.06,
-                    atmosphere: { color: 0xffd9a8, opacity: 0.22, scale: 1.06 },
+                    roughness: 0.72, metalness: 0.04, emissiveIntensity: 0.07, bumpScale: 0.22,
+                    envMapIntensity: 0.55, clearcoat: 0, clearcoatRoughness: 0.5, specularIntensity: 0.6,
+                    roughMin: 0.62, roughMax: 0.82,
+                    tilt: 0.12,
+                    atmosphere: { color: 0xffc98a, opacity: 0.26, scale: 1.06, nightColor: 0x6b3413 },
                     cloud: null
                 },
                 Earth: {
-                    roughness: 0.65, metalness: 0.05, emissiveIntensity: 0.03,
-                    atmosphere: { color: 0x66ccff, opacity: 0.2, scale: 1.08 },
-                    cloud: { opacity: 0.35, scale: 1.02 }
+                    roughness: 0.68, metalness: 0.06, emissiveIntensity: 0.04, bumpScale: 0.5,
+                    envMapIntensity: 0.9, clearcoat: 0, clearcoatRoughness: 0.5, specularIntensity: 1.25,
+                    roughMin: 0.1, roughMax: 0.75, roughInvert: true,
+                    tilt: 0.4084,
+                    atmosphere: { color: 0x6fbfff, opacity: 0.3, scale: 1.08, nightColor: 0x0a2a5e },
+                    cloud: { opacity: 0.4, scale: 1.02 }
                 },
                 Mars: {
-                    roughness: 0.82, metalness: 0.08, emissiveIntensity: 0.05,
-                    atmosphere: null, cloud: null
+                    roughness: 0.85, metalness: 0.1, emissiveIntensity: 0.06, bumpScale: 0.6,
+                    envMapIntensity: 0.5, clearcoat: 0, clearcoatRoughness: 0.5, specularIntensity: 0.5,
+                    roughMin: 0.75, roughMax: 0.95,
+                    tilt: 0.44,
+                    atmosphere: { color: 0xff9c66, opacity: 0.18, scale: 1.045, nightColor: 0x571f0c },
+                    cloud: null
                 },
                 Jupiter: {
-                    roughness: 0.55, metalness: 0.02, emissiveIntensity: 0.04,
-                    atmosphere: null, cloud: null
+                    roughness: 0.6, metalness: 0.02, emissiveIntensity: 0.05, bumpScale: 0.16,
+                    envMapIntensity: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.4, specularIntensity: 0.8,
+                    roughMin: 0.5, roughMax: 0.68,
+                    tilt: 0.054, atmosphere: null, cloud: null
                 },
                 Saturn: {
-                    roughness: 0.6, metalness: 0.02, emissiveIntensity: 0.03,
-                    atmosphere: null, cloud: null
+                    roughness: 0.65, metalness: 0.02, emissiveIntensity: 0.04, bumpScale: 0.14,
+                    envMapIntensity: 0.5, clearcoat: 0.2, clearcoatRoughness: 0.5, specularIntensity: 0.7,
+                    roughMin: 0.52, roughMax: 0.7,
+                    tilt: 0.466,
+                    atmosphere: { color: 0xffe2a8, opacity: 0.1, scale: 1.04, nightColor: 0x4a2f10 },
+                    cloud: null
                 },
                 Uranus: {
-                    roughness: 0.55, metalness: 0.02, emissiveIntensity: 0.03,
-                    atmosphere: { color: 0x8ce8ff, opacity: 0.18, scale: 1.05 },
+                    roughness: 0.6, metalness: 0.02, emissiveIntensity: 0.04, bumpScale: 0.18,
+                    envMapIntensity: 0.6, clearcoat: 0.35, clearcoatRoughness: 0.3, specularIntensity: 0.8,
+                    roughMin: 0.45, roughMax: 0.62,
+                    tilt: 1.7069,
+                    atmosphere: { color: 0x9ff0ff, opacity: 0.24, scale: 1.05, nightColor: 0x123a4a },
                     cloud: null
                 },
                 Neptune: {
-                    roughness: 0.55, metalness: 0.02, emissiveIntensity: 0.03,
-                    atmosphere: { color: 0x6d8cff, opacity: 0.18, scale: 1.05 },
+                    roughness: 0.58, metalness: 0.02, emissiveIntensity: 0.04, bumpScale: 0.22,
+                    envMapIntensity: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.35, specularIntensity: 0.8,
+                    roughMin: 0.45, roughMax: 0.62,
+                    tilt: 0.494,
+                    atmosphere: { color: 0x6d8cff, opacity: 0.26, scale: 1.05, nightColor: 0x0e1740 },
                     cloud: null
                 }
             };
-            return presets[nameEn] || { roughness: 0.7, metalness: 0.05, emissiveIntensity: 0.04, atmosphere: null, cloud: null };
+            return presets[nameEn] || { roughness: 0.7, metalness: 0.05, emissiveIntensity: 0.04, bumpScale: 0.3, envMapIntensity: 0.5, clearcoat: 0, clearcoatRoughness: 0.5, specularIntensity: 1, roughMin: 0.55, roughMax: 0.85, tilt: 0, atmosphere: null, cloud: null };
         }
 
         // --- 4. 行星数据（增强版） ---
@@ -2312,6 +2581,7 @@ Geoms: --</div>
 
         // 创建太阳（写实表面纹理 + 多层光晕）
         const sunTexture = createSunTexture();
+        sunTexture.colorSpace = THREE.SRGBColorSpace;
         const sunGeometry = new THREE.SphereGeometry(20, qualityProfile.sun, qualityProfile.sun);
         const sunMaterial = new THREE.MeshBasicMaterial({
             map: sunTexture,
@@ -2321,43 +2591,150 @@ Geoms: --</div>
         sunObj.mesh = new THREE.Mesh(sunGeometry, sunMaterial);
         sunObj.mesh.position.set(0, 0, 0);
 
-        // 内层光晕（柔和暖色）
-        const sunGlowGeometry = new THREE.SphereGeometry(25, qualityProfile.sunGlow, qualityProfile.sunGlow);
-        const sunGlowMaterial = new THREE.MeshBasicMaterial({
-            color: 0xFFAA00,
-            transparent: true,
-            opacity: 0.25,
-            side: THREE.BackSide,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-        const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
-        sunObj.sunGlow = sunGlow;
-        sunObj.mesh.add(sunGlow);
+        // === 太阳光晕系统：核心辉光 + 中层光晕 + 外层日冕 + 星芒射线 ===
+        // 基于视角方向的径向衰减着色器：亮度从太阳表面平滑衰减到光晕边缘
+        const sunGlowVertexShader = `
+            varying vec3 vViewPos;
+            varying vec3 vCenterView;
+            void main() {
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                vViewPos = mv.xyz;
+                vCenterView = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+                gl_Position = projectionMatrix * mv;
+            }
+        `;
 
-        // 中层光晕
-        const sunGlowMidGeometry = new THREE.SphereGeometry(32, 32, 32);
-        const sunGlowMidMaterial = new THREE.MeshBasicMaterial({
-            color: 0xFF6600,
-            transparent: true,
-            opacity: 0.12,
-            side: THREE.BackSide,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-        sunObj.mesh.add(new THREE.Mesh(sunGlowMidGeometry, sunGlowMidMaterial));
+        const sunGlowFragmentShader = `
+            uniform vec3 uColor;
+            uniform vec3 uEdgeColor;
+            uniform float uOpacity;
+            uniform float uStart;
+            uniform float uFalloff;
+            uniform float uTime;
+            uniform float uRipple;
+            varying vec3 vViewPos;
+            varying vec3 vCenterView;
+            void main() {
+                vec3 toFrag = normalize(vViewPos - vCenterView);
+                vec3 viewAxis = normalize(-vCenterView);
+                float t = sqrt(max(0.0, 1.0 - dot(toFrag, viewAxis) * dot(toFrag, viewAxis)));
+                float a = 1.0 - smoothstep(uStart, 1.0, t);
+                a = pow(max(a, 0.0), uFalloff) * uOpacity;
+                // 日冕层缓慢涟漪（uRipple = 1 时启用）
+                a *= 1.0 - uRipple * 0.12 + uRipple * 0.12 * sin(uTime * 0.0005 + t * 18.0);
+                if (a < 0.004) discard;
+                vec3 col = mix(uColor, uEdgeColor, t);
+                gl_FragColor = vec4(col * a, a);
+                #include <tonemapping_fragment>
+                #include <colorspace_fragment>
+            }
+        `;
 
-        // 外层光晕
-        const sunGlowOuterGeometry = new THREE.SphereGeometry(42, 24, 24);
-        const sunGlowOuterMaterial = new THREE.MeshBasicMaterial({
-            color: 0xFF3300,
+        function createSunGlowShell(radius, color, edgeColor, opacity, falloff, ripple, segments) {
+            const geometry = new THREE.SphereGeometry(radius, segments, segments);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(color) },
+                    uEdgeColor: { value: new THREE.Color(edgeColor) },
+                    uOpacity: { value: opacity },
+                    uStart: { value: 20 / radius },
+                    uFalloff: { value: falloff },
+                    uTime: { value: 0 },
+                    uRipple: { value: ripple }
+                },
+                vertexShader: sunGlowVertexShader,
+                fragmentShader: sunGlowFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.BackSide,
+                toneMapped: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.renderOrder = 2;
+            return mesh;
+        }
+
+        // 星芒射线纹理（程序化：径向渐变 + 四向星芒 + 细伴线）
+        function createSunRaysTexture() {
+            const w = 256, h = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const cx = w / 2, cy = h / 2;
+
+            const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
+            glow.addColorStop(0.0, 'rgba(255, 250, 235, 0.85)');
+            glow.addColorStop(0.2, 'rgba(255, 224, 170, 0.45)');
+            glow.addColorStop(0.5, 'rgba(255, 170, 80, 0.14)');
+            glow.addColorStop(0.8, 'rgba(255, 120, 40, 0.03)');
+            glow.addColorStop(1.0, 'rgba(255, 100, 30, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 4; i++) {
+                ctx.save();
+                ctx.rotate(i * Math.PI / 2 + Math.PI / 4);
+                const len = cx * 0.97;
+                const ray = ctx.createLinearGradient(0, 0, len, 0);
+                ray.addColorStop(0.0, 'rgba(255, 245, 220, 0.9)');
+                ray.addColorStop(0.12, 'rgba(255, 226, 170, 0.38)');
+                ray.addColorStop(0.5, 'rgba(255, 180, 100, 0.07)');
+                ray.addColorStop(1.0, 'rgba(255, 150, 70, 0)');
+                ctx.strokeStyle = ray;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(len, 0);
+                ctx.stroke();
+                // 细伴线（增加星芒层次感）
+                ctx.save();
+                ctx.rotate(0.3);
+                ctx.strokeStyle = 'rgba(255, 230, 180, 0.3)';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(len * 0.75, 0);
+                ctx.stroke();
+                ctx.restore();
+                ctx.restore();
+            }
+            ctx.restore();
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // 核心光晕（暖白亮核，紧贴太阳表面平滑向外衰减）
+        const sunGlowCore = createSunGlowShell(46, 0xFFF1C6, 0xFFA63D, 0.55, 1.6, 0, qualityProfile.sunGlow);
+        sunObj.sunGlow = sunGlowCore;
+        sunObj.mesh.add(sunGlowCore);
+
+        // 中层光晕（琥珀色宽晕）
+        const sunGlowMid = createSunGlowShell(72, 0xFFBE52, 0xFF7A00, 0.2, 1.8, 0, 32);
+        sunObj.sunGlowMid = sunGlowMid;
+        sunObj.mesh.add(sunGlowMid);
+
+        // 外层日冕（深橙红，带缓慢涟漪）
+        const sunGlowOuter = createSunGlowShell(115, 0xFF9E3C, 0xFF3D00, 0.09, 2.2, 1, 32);
+        sunObj.sunGlowOuter = sunGlowOuter;
+        sunObj.mesh.add(sunGlowOuter);
+
+        // 星芒射线（面向相机的光斑，缓慢旋转）
+        const sunRaysTexture = createSunRaysTexture();
+        const sunRaysMaterial = new THREE.SpriteMaterial({
+            map: sunRaysTexture,
             transparent: true,
-            opacity: 0.05,
-            side: THREE.BackSide,
+            opacity: 0.13,
             blending: THREE.AdditiveBlending,
             depthWrite: false
         });
-        sunObj.mesh.add(new THREE.Mesh(sunGlowOuterGeometry, sunGlowOuterMaterial));
+        const sunRays = new THREE.Sprite(sunRaysMaterial);
+        sunRays.scale.set(240, 240, 1);
+        sunRays.renderOrder = 3;
+        sunObj.sunRays = sunRays;
+        sunObj.mesh.add(sunRays);
         
         worldGroup.add(sunObj.mesh);
 
@@ -2367,6 +2744,7 @@ Geoms: --</div>
         worldGroup.add(staticOrbits);
 
         const saturnRingTexture = createRingTexture();
+        saturnRingTexture.colorSpace = THREE.SRGBColorSpace;
 
         // 创建标签
         function createLabel(planet, position) {
@@ -2379,10 +2757,12 @@ Geoms: --</div>
             const spriteMaterial = new THREE.SpriteMaterial({ 
                 map: texture,
                 transparent: true,
-                opacity: 0.9
+                opacity: 0.9,
+                depthWrite: false // 标签纯文字不写入深度，避免在其矩形范围内挖掉后方的光晕/拖影
             });
             const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(40, 10, 1);
+            // 标签尺寸随行星大小缩放，避免小行星上方出现巨大的隐形矩形
+            sprite.scale.set(Math.max(28, planet.size * 5), Math.max(7, planet.size * 1.25), 1);
             sprite.position.copy(position);
             
             // 更新标签文本的函数
@@ -2414,6 +2794,95 @@ Geoms: --</div>
             return sprite;
         }
 
+        // 大气层菲涅尔辉光着色器（真实的光学边缘）
+        const atmosphereVertexShader = `
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                vec4 wp = modelMatrix * vec4(position, 1.0);
+                vWorldPos = wp.xyz;
+                gl_Position = projectionMatrix * viewMatrix * wp;
+            }
+        `;
+
+        const atmosphereFragmentShader = `
+            uniform vec3 uColor;
+            uniform vec3 uNightColor;
+            uniform float uOpacity;
+            uniform float uPower;
+            uniform float uIntensity;
+            uniform vec3 uCamPos;
+            uniform vec3 uSunPos;
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            void main() {
+                vec3 N = normalize(vNormal);
+                vec3 V = normalize(uCamPos - vWorldPos);
+                vec3 L = normalize(uSunPos - vWorldPos);
+                float ndv = clamp(dot(N, V), 0.0, 1.0);
+                float rim = pow(1.0 - ndv, uPower);
+                float ndl = clamp(dot(N, L), 0.0, 1.0);
+                float lit = 0.28 + 0.72 * ndl;
+                // 昼夜过渡：受光面为大气本色，晨昏线附近混入暖色散射，夜面呈暗色
+                float terminator = smoothstep(-0.12, 0.5, ndl);
+                vec3 col = mix(uNightColor, uColor, terminator);
+                float a = rim * lit * uIntensity;
+                gl_FragColor = vec4(col * (0.1 + rim * 0.4 + lit * 0.45), a * uOpacity);
+            }
+        `;
+
+        function createAtmosphereLayers(mesh, planetSize, atmosphere, uniformsOut) {
+            const { color, opacity, scale } = atmosphere;
+            const nightColor = atmosphere.nightColor || 0x000000;
+
+            // 菲涅尔边缘辉光（贴近球面的明亮光边）
+            const rimUniforms = {
+                uColor: { value: new THREE.Color(color) },
+                uNightColor: { value: new THREE.Color(nightColor) },
+                uOpacity: { value: opacity },
+                uPower: { value: 3.4 },
+                uIntensity: { value: 1.6 },
+                uCamPos: { value: new THREE.Vector3() },
+                uSunPos: { value: new THREE.Vector3(0, 0, 0) }
+            };
+            const rimMat = new THREE.ShaderMaterial({
+                uniforms: rimUniforms,
+                vertexShader: atmosphereVertexShader,
+                fragmentShader: atmosphereFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.FrontSide
+            });
+            const rim = new THREE.Mesh(
+                new THREE.SphereGeometry(planetSize * scale * 1.03, qualityProfile.atmosphere, qualityProfile.atmosphere),
+                rimMat
+            );
+            rim.userData.isAtmosphereLayer = true;
+            rim.userData.atmosphereScale = scale * 1.03;
+            mesh.add(rim);
+            uniformsOut.push(rimUniforms);
+
+            // 宽泛外层光晕（柔和扩散）
+            const haloMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: opacity * 0.38,
+                side: THREE.BackSide,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                fog: false
+            });
+            const halo = new THREE.Mesh(
+                new THREE.SphereGeometry(planetSize * scale * 1.16, qualityProfile.atmosphere, qualityProfile.atmosphere),
+                haloMat
+            );
+            halo.userData.isAtmosphereLayer = true;
+            halo.userData.atmosphereScale = scale * 1.16;
+            mesh.add(halo);
+        }
+
         // 创建行星
         planetsData.forEach(data => {
             // 创建静态轨道
@@ -2428,17 +2897,24 @@ Geoms: --</div>
             orbit.rotation.x = Math.PI / 2;
             staticOrbits.add(orbit);
 
-            // 创建行星材质（PBR写实材质）
+            // 创建行星材质（PBR写实材质 + 凹凸贴图 + 粗糙度贴图）
             const visualPreset = getPlanetVisualPreset(data.nameEn);
-            const texture = createPlanetTexture(data.nameEn);
+            const planetTextures = createPlanetTexture(data.nameEn, visualPreset);
 
-            const planetMat = new THREE.MeshStandardMaterial({
-                map: texture,
+            const planetMat = new THREE.MeshPhysicalMaterial({
+                map: planetTextures.map,
+                bumpMap: planetTextures.bumpMap,
+                bumpScale: visualPreset.bumpScale,
+                roughnessMap: planetTextures.roughnessMap || null,
                 roughness: visualPreset.roughness,
                 metalness: visualPreset.metalness,
                 emissive: data.emissive,
                 emissiveIntensity: visualPreset.emissiveIntensity,
-                toneMapped: false
+                envMapIntensity: visualPreset.envMapIntensity,
+                clearcoat: visualPreset.clearcoat || 0,
+                clearcoatRoughness: visualPreset.clearcoatRoughness ?? 0.5,
+                specularIntensity: visualPreset.specularIntensity ?? 1.0,
+                toneMapped: true
             });
 
             // 创建行星
@@ -2449,39 +2925,23 @@ Geoms: --</div>
             mesh.castShadow = true;
             mesh.receiveShadow = true;
 
-            // 大气层（部分行星）- 使用自定义发光效果
-            if (visualPreset.atmosphere) {
-                const atmosphereGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale, qualityProfile.atmosphere, qualityProfile.atmosphere);
-                const atmosphereMaterial = new THREE.MeshBasicMaterial({
-                    color: visualPreset.atmosphere.color,
-                    transparent: true,
-                    opacity: visualPreset.atmosphere.opacity,
-                    side: THREE.BackSide,
-                    blending: THREE.AdditiveBlending,
-                    depthWrite: false
-                });
-                const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-                atmosphere.userData.isAtmosphereLayer = true;
-                atmosphere.userData.atmosphereScale = visualPreset.atmosphere.scale;
-                mesh.add(atmosphere);
-
-                // 外层光晕
-                const outerGlowGeometry = new THREE.SphereGeometry(data.size * visualPreset.atmosphere.scale * 1.12, qualityProfile.atmosphere, qualityProfile.atmosphere);
-                const outerGlowMaterial = new THREE.MeshBasicMaterial({
-                    color: visualPreset.atmosphere.color,
-                    transparent: true,
-                    opacity: visualPreset.atmosphere.opacity * 0.4,
-                    side: THREE.BackSide,
-                    blending: THREE.AdditiveBlending,
-                    depthWrite: false
-                });
-                mesh.add(new THREE.Mesh(outerGlowGeometry, outerGlowMaterial));
+            // 自转轴倾角（真实天文数据，弧度）
+            if (visualPreset.tilt) {
+                mesh.rotation.z = visualPreset.tilt;
             }
+
+            // 大气层（部分行星）- 菲涅尔边缘辉光 + 外层光晕
+            const atmosphereUniforms = [];
+            if (visualPreset.atmosphere) {
+                createAtmosphereLayers(mesh, data.size, visualPreset.atmosphere, atmosphereUniforms);
+            }
+            mesh.userData.atmosphereUniforms = atmosphereUniforms;
 
             // 云层（地球）
             let cloudLayer = null;
             if (visualPreset.cloud) {
                 const cloudTexture = createEarthCloudTexture();
+                cloudTexture.colorSpace = THREE.SRGBColorSpace;
                 const cloudMaterial = new THREE.MeshStandardMaterial({
                     map: cloudTexture,
                     transparent: true,
@@ -2504,21 +2964,41 @@ Geoms: --</div>
 
             // 土星环
             if (data.hasRings) {
-                const ringGeometry = new THREE.RingGeometry(data.size * 1.35, data.size * 2.35, 128);
+                const ringGeometry = new THREE.RingGeometry(data.size * 1.35, data.size * 2.35, 160);
                 const ringMaterial = new THREE.MeshStandardMaterial({
                     map: saturnRingTexture,
                     side: THREE.DoubleSide,
                     transparent: true,
-                    opacity: 0.85,
-                    roughness: 0.75,
-                    metalness: 0.1,
+                    opacity: 0.88,
+                    roughness: 0.7,
+                    metalness: 0.08,
                     emissive: 0x2d2416,
                     emissiveIntensity: 0.06,
+                    envMapIntensity: 0.45,
+                    toneMapped: true,
                     depthWrite: false
                 });
                 const ring = new THREE.Mesh(ringGeometry, ringMaterial);
                 ring.rotation.x = Math.PI / 2.25;
+                ring.receiveShadow = true;
                 mesh.add(ring);
+            }
+
+            // 天王星淡环（近垂直的纤细光环）
+            if (data.nameEn === 'Uranus') {
+                const faintRingTexture = createFaintRingTexture();
+                const faintRingGeometry = new THREE.RingGeometry(data.size * 1.55, data.size * 2.0, 160);
+                const faintRingMaterial = new THREE.MeshBasicMaterial({
+                    map: faintRingTexture,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.42,
+                    depthWrite: false,
+                    toneMapped: false
+                });
+                const faintRing = new THREE.Mesh(faintRingGeometry, faintRingMaterial);
+                faintRing.rotation.x = Math.PI / 2;
+                mesh.add(faintRing);
             }
 
 // 初始化拖影几何体（使用TubeGeometry实现可变粗细）
@@ -2528,7 +3008,10 @@ Geoms: --</div>
             const trailMat = new THREE.MeshBasicMaterial({ 
                 color: data.color, 
                 transparent: true, 
-                opacity: 0.7
+                opacity: 0.75,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                toneMapped: false
             });
             
             // 创建一个空的管道网格，稍后会根据路径点重新生成
@@ -2576,7 +3059,10 @@ Geoms: --</div>
             mesh: new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
                 color: 0xFFCC00,
                 transparent: true,
-                opacity: 0.5
+                opacity: 0.55,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                toneMapped: false
             })),
             curve: new THREE.CatmullRomCurve3([]),
             points: [],
@@ -2592,9 +3078,63 @@ Geoms: --</div>
         sunObj.trailLine.mesh.visible = false;
         scene.add(sunObj.trailLine.mesh);
 
-        const trailBodies = [...planets, sunObj];
+        // --- 月球（地球的卫星） ---
+        const moonParentPlanet = planets.find(p => p.nameEn === 'Earth');
+        const moonTrailMat = new THREE.MeshBasicMaterial({
+            color: 0xcccccc,
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            toneMapped: false
+        });
+        const moonTrailMesh = new THREE.Mesh(new THREE.BufferGeometry(), moonTrailMat);
+        moonTrailMesh.frustumCulled = false;
+        moonTrailMesh.visible = false;
+        scene.add(moonTrailMesh);
+        const moonTextures = createMoonTexture();
+        const moonMaterial = new THREE.MeshStandardMaterial({
+            map: moonTextures.map,
+            bumpMap: moonTextures.bumpMap,
+            bumpScale: 0.4,
+            roughness: 0.95,
+            metalness: 0.05,
+            envMapIntensity: 0.4,
+            toneMapped: true
+        });
+        const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(0.72, 28, 28), moonMaterial);
+        moonMesh.castShadow = true;
+        moonMesh.receiveShadow = true;
+        const moonObj = {
+            name: '月球',
+            nameEn: 'Moon',
+            mesh: moonMesh,
+            trailLine: {
+                mesh: moonTrailMesh,
+                curve: new THREE.CatmullRomCurve3([]),
+                points: [],
+                buffer: [],
+                start: 0,
+                count: 0,
+                lastSampleMs: 0,
+                lastSamplePos: new THREE.Vector3(NaN, NaN, NaN),
+                dirty: false,
+                visible: false
+            },
+            trailPoints: [],
+            trailLength: Math.max(0, Math.floor(config.trailMaxPoints * 0.6)),
+            angle: Math.random() * Math.PI * 2,
+            baseSpeed: 0.05,
+            orbitRadius: 9.0,
+            parentPlanet: moonParentPlanet
+        };
+        worldGroup.add(moonMesh);
+
+        const trailBodies = [...planets, sunObj, moonObj];
         const planetByNameEn = new Map(planets.map(planet => [planet.nameEn, planet]));
-        const selectablePlanetMeshes = [sunObj.mesh, ...planets.map(p => p.mesh)];
+        // 可点击目标：仅中心球体与文字标签。
+        // 光晕/射线/大气/云层/光环等外围效果不参与点击与悬停判定（避免点击范围过大）
+        const selectablePlanetMeshes = [sunObj.mesh, ...planets.map(p => p.mesh), ...labels];
         const meshToPlanet = new Map();
         meshToPlanet.set(sunObj.mesh, sunObj);
         sunObj.mesh.children.forEach(child => meshToPlanet.set(child, sunObj));
@@ -2626,6 +3166,7 @@ Geoms: --</div>
         const trailWorldPos = new THREE.Vector3();
         const trailRefPos = new THREE.Vector3();
         const trailRelativePos = new THREE.Vector3();
+        const atmSunPos = new THREE.Vector3();
         const focusTempWorldPos = new THREE.Vector3();
         const focusTempCameraPos = new THREE.Vector3();
         const perfStatsEl = document.getElementById('perf-stats');
@@ -2655,41 +3196,48 @@ Geoms: --</div>
         const showInfoBtn = document.getElementById('show-info-btn');
         const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-        window.addEventListener('mousedown', (event) => {
-            if (event.target.closest('#controls') || event.target.closest('#info-panel') || event.target.closest('#show-info-btn')) return;
-            
+        // 点击/拖拽区分：按下时记录位置，松开时位移小于阈值才视为“点击”。
+        // 避免在行星（尤其是画面中央的太阳）上开始拖拽视角时被误判为点击，
+        // 导致切换参考中心并清空拖影。
+        let pointerPressPos = null;
+        window.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) {
+                return;
+            }
+            if (event.target.closest('#controls') || event.target.closest('#info-panel') || event.target.closest('#show-info-btn')) {
+                return;
+            }
+            pointerPressPos = { x: event.clientX, y: event.clientY };
+        });
+
+        window.addEventListener('pointerup', (event) => {
+            if (event.button !== 0 || !pointerPressPos) {
+                return;
+            }
+            const dx = event.clientX - pointerPressPos.x;
+            const dy = event.clientY - pointerPressPos.y;
+            pointerPressPos = null;
+            // 位移超过阈值（约 6px）视为拖拽视角，不触发点击逻辑、不清空拖影
+            if (dx * dx + dy * dy > 36) {
+                return;
+            }
+
             clickMouse.set(
                 (event.clientX / window.innerWidth) * 2 - 1,
                 -(event.clientY / window.innerHeight) * 2 + 1
             );
             clickRaycaster.setFromCamera(clickMouse, camera);
-            
-            const intersects = clickRaycaster.intersectObjects(selectablePlanetMeshes, true);
+
+            const intersects = clickRaycaster.intersectObjects(selectablePlanetMeshes, false);
 
             if (intersects.length > 0) {
                 const clickedMesh = intersects[0].object;
                 const clickedPlanet = resolvePlanetFromMesh(clickedMesh);
 
-                if (clickedPlanet === sunObj) {
-                    // 设置锁定行星，不移动相机
-                    selectedPlanet = sunObj;
-                    lockedPlanet = sunObj;
-                    stopFocus();
-                    clearTrails();
-                    setCenterViewName(sunObj);
-                    showInfoBtn.classList.add('is-visible');
-                    // 更新中心星球按钮激活状态
-                    updateCenterButton('sun');
-                } else if (clickedPlanet) {
-                    // 设置锁定行星，不移动相机
-                    selectedPlanet = clickedPlanet;
-                    lockedPlanet = clickedPlanet;
-                    stopFocus();
-                    clearTrails();
-                    setCenterViewName(clickedPlanet);
-                    showInfoBtn.classList.add('is-visible');
-                    // 更新中心星球按钮激活状态
-                    updateCenterButton(clickedPlanet.nameEn.toLowerCase());
+                if (clickedPlanet) {
+                    // 平滑飞向被点击的行星并切换参考中心
+                    centerOnPlanet(clickedPlanet, true);
+                    updateCenterButton(clickedPlanet === sunObj ? 'sun' : clickedPlanet.nameEn.toLowerCase());
                 }
             } else {
                 hideInfoPanel();
@@ -2699,6 +3247,37 @@ Geoms: --</div>
                 }
                 // 不再自动重置参考系和相机，保持当前视角
             }
+        });
+
+        // 悬停高亮：鼠标经过行星时轻微增强自发光，提示可点击
+        const hoverRaycaster = new THREE.Raycaster();
+        const pointerNdc = new THREE.Vector2();
+        let hoveredPlanet = null;
+        renderer.domElement.addEventListener('pointermove', (event) => {
+            pointerNdc.set(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+            hoverRaycaster.setFromCamera(pointerNdc, camera);
+            const hoverHits = hoverRaycaster.intersectObjects(selectablePlanetMeshes, false);
+            let hoverTarget = null;
+            if (hoverHits.length > 0) {
+                hoverTarget = resolvePlanetFromMesh(hoverHits[0].object);
+            }
+            if (hoverTarget === hoveredPlanet) {
+                return;
+            }
+            if (hoveredPlanet && hoveredPlanet !== sunObj && hoveredPlanet.mesh.material) {
+                hoveredPlanet.mesh.material.emissiveIntensity = hoveredPlanet._baseEmissiveIntensity ?? hoveredPlanet.mesh.material.emissiveIntensity;
+            }
+            hoveredPlanet = hoverTarget;
+            if (hoveredPlanet && hoveredPlanet !== sunObj && hoveredPlanet.mesh.material) {
+                if (hoveredPlanet._baseEmissiveIntensity === undefined) {
+                    hoveredPlanet._baseEmissiveIntensity = hoveredPlanet.mesh.material.emissiveIntensity;
+                }
+                hoveredPlanet.mesh.material.emissiveIntensity = hoveredPlanet._baseEmissiveIntensity + 0.3;
+            }
+            renderer.domElement.style.cursor = hoveredPlanet ? 'pointer' : '';
         });
 
         // 信息面板事件
@@ -2717,10 +3296,9 @@ Geoms: --</div>
         btnOrbit.addEventListener('click', (e) => {
             e.stopPropagation();
             if (selectedPlanet && selectedPlanet !== sunObj) {
-                lockedPlanet = selectedPlanet;
-                setCenterViewName(lockedPlanet);
+                centerOnPlanet(selectedPlanet, true);
                 staticOrbits.visible = false;
-                clearTrails();
+                updateCenterButton(selectedPlanet.nameEn.toLowerCase());
             }
         });
 
@@ -2736,6 +3314,7 @@ Geoms: --</div>
         }
 
         function resetReference(resetCamera = false) {
+            cancelCameraTransition();
             lockedPlanet = null;
             focusedPlanet = null;
             selectedPlanet = null;
@@ -3171,14 +3750,92 @@ Geoms: --</div>
         document.getElementById('view-low').addEventListener('click', () => animateCamera(cameraPresets.low));
 
         // 中心星球按钮事件
-        function centerOnPlanet(planet) {
-            // 只设置锁定行星，不移动相机
+        // 平滑过渡状态：过渡期间由补间驱动 worldGroup/相机/目标点，并暂停拖影采样
+        let cameraTransitionActive = false;
+        let cameraTransitionToken = 0;
+        let cameraTransitionTweens = [];
+
+        function cancelCameraTransition() {
+            cameraTransitionToken++;
+            cameraTransitionTweens.forEach(t => t.stop());
+            cameraTransitionTweens = [];
+            if (cameraTransitionActive) {
+                cameraTransitionActive = false;
+                controls.enabled = true;
+                controls.enableDamping = true;
+            }
+        }
+
+        function finishCenterSwitch(planet) {
             selectedPlanet = planet;
             lockedPlanet = planet;
-            stopFocus();
             clearTrails();
             setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
+        }
+
+        function centerOnPlanet(planet, animate = true) {
+            stopFocus();
+
+            const startWG = worldGroup.position.clone();
+            const endWG = new THREE.Vector3(-planet.mesh.position.x, 0, -planet.mesh.position.z);
+
+            // 目标中心没有变化（或要求不带动画）时直接切换，避免多余动作
+            if (!animate || prefersReducedMotion || startWG.distanceTo(endWG) < 0.001) {
+                cancelCameraTransition();
+                finishCenterSwitch(planet);
+                return;
+            }
+
+            // 结束上一个未完成的过渡
+            cancelCameraTransition();
+
+            // 过渡期间隐藏拖影，避免参考系移动导致拖影错位
+            trailBodies.forEach(p => setTrailMeshVisible(p.trailLine, false));
+
+            const startTarget = controls.target.clone();
+            const camOffset = camera.position.clone().sub(startTarget);
+            const prevDamping = controls.enableDamping;
+            const token = ++cameraTransitionToken;
+            cameraTransitionActive = true;
+            controls.enabled = false;
+            controls.enableDamping = false;
+
+            const duration = 1400;
+            const easing = TWEEN.Easing.Cubic.InOut;
+
+            // worldGroup 平滑跟随：插值终点使用行星“当前”位置（行星在过渡期间仍在运动），
+            // 使过渡结束时与 animate() 的实时锁定位置完全一致，避免切换完成后画面抖动
+            const wgTmp = new THREE.Vector3();
+            const tweenWG = new TWEEN.Tween({ t: 0 })
+                .to({ t: 1 }, duration)
+                .easing(easing)
+                .onUpdate((obj) => {
+                    wgTmp.set(-planet.mesh.position.x, 0, -planet.mesh.position.z);
+                    worldGroup.position.lerpVectors(startWG, wgTmp, obj.t);
+                })
+                .start();
+            // 新参考中心最终落在原点，目标点平滑归零
+            const tweenTarget = new TWEEN.Tween(controls.target)
+                .to({ x: 0, y: 0, z: 0 }, duration)
+                .easing(easing)
+                .start();
+            // 相机保持与目标点的相对偏移平移过去，视角方向不变
+            const tweenCam = new TWEEN.Tween(camera.position)
+                .to({ x: camOffset.x, y: camOffset.y, z: camOffset.z }, duration)
+                .easing(easing)
+                .onComplete(() => {
+                    if (cameraTransitionToken !== token) {
+                        return;
+                    }
+                    cameraTransitionActive = false;
+                    controls.enabled = true;
+                    controls.enableDamping = prevDamping;
+                    finishCenterSwitch(planet);
+                })
+                .start();
+
+            cameraTransitionTweens = [tweenWG, tweenTarget, tweenCam];
         }
 
         const centerButtonsByName = new Map(Array.from(document.querySelectorAll('.center-planet-btn')).map(btn => [btn.id.replace('center-', ''), btn]));
@@ -3305,13 +3962,58 @@ Geoms: --</div>
                 });
 
                 sunObj.mesh.rotation.y += 0.002 * config.rotationScale;
+
+                // 月球绕地球公转
+                if (moonObj && moonObj.parentPlanet) {
+                    moonObj.angle += moonObj.baseSpeed * config.timeScale * delta * 60;
+                    const ep = moonObj.parentPlanet.mesh.position;
+                    moonObj.mesh.position.set(
+                        ep.x + Math.cos(moonObj.angle) * moonObj.orbitRadius,
+                        0,
+                        ep.z + Math.sin(moonObj.angle) * moonObj.orbitRadius
+                    );
+                    moonObj.mesh.rotation.y += 0.02 * config.rotationScale;
+                }
             }
 
-            if (lockedPlanet) {
+            // 大气层菲涅尔辉光随视角/光源动态更新
+            sunObj.mesh.getWorldPosition(atmSunPos);
+            planets.forEach(p => {
+                const uniforms = p.mesh.userData.atmosphereUniforms;
+                if (uniforms && uniforms.length) {
+                    for (const u of uniforms) {
+                        u.uCamPos.value.copy(camera.position);
+                        u.uSunPos.value.copy(atmSunPos);
+                    }
+                }
+            });
+
+            // 太阳光晕动态效果：核心呼吸脉动 + 日冕涟漪 + 星芒缓慢旋转
+            if (sunObj.sunGlow && sunObj.sunGlow.material && sunObj.sunGlow.material.uniforms) {
+                const breathing = prefersReducedMotion ? 1.0 : 0.88 + 0.12 * Math.sin(nowMs * 0.0011);
+                sunObj.sunGlow.material.uniforms.uOpacity.value = 0.55 * breathing;
+                if (!prefersReducedMotion) {
+                    sunObj.sunGlow.scale.setScalar(1 + 0.015 * Math.sin(nowMs * 0.0009 + 1.2));
+                }
+            }
+            if (sunObj.sunGlowOuter && sunObj.sunGlowOuter.material && sunObj.sunGlowOuter.material.uniforms) {
+                sunObj.sunGlowOuter.material.uniforms.uTime.value = nowMs;
+                if (!prefersReducedMotion) {
+                    sunObj.sunGlowOuter.material.uniforms.uOpacity.value = 0.09 * (0.9 + 0.1 * Math.sin(nowMs * 0.0007 + 2.0));
+                }
+            }
+            if (sunObj.sunRays && sunObj.sunRays.material) {
+                if (!prefersReducedMotion) {
+                    sunObj.sunRays.material.rotation = nowMs * 0.00003;
+                    sunObj.sunRays.material.opacity = 0.13 + 0.03 * Math.sin(nowMs * 0.0008 + 1.0);
+                }
+            }
+
+            if (lockedPlanet && !cameraTransitionActive) {
                 worldGroup.position.set(-lockedPlanet.mesh.position.x, 0, -lockedPlanet.mesh.position.z);
             }
 
-            if (lockedPlanet && config.showTrails) {
+            if (lockedPlanet && config.showTrails && !cameraTransitionActive) {
                 if (!config.isPaused) {
                     lockedPlanet.mesh.getWorldPosition(trailRefPos);
                     trailBodies.forEach(p => {
