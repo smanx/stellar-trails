@@ -82,8 +82,20 @@ All dependencies are downloaded to the local `libs/` directory. The application 
     ├── three/              # Three.js core library
     │   └── three.module.js
     ├── three-addons/       # Three.js add-ons
-    │   └── controls/
-    │       └── OrbitControls.js
+    │   ├── controls/
+    │   │   └── OrbitControls.js
+    │   ├── postprocessing/ # Post-processing chain (bloom pipeline)
+    │   │   ├── EffectComposer.js
+    │   │   ├── RenderPass.js
+    │   │   ├── ShaderPass.js
+    │   │   ├── UnrealBloomPass.js
+    │   │   ├── OutputPass.js
+    │   │   ├── MaskPass.js
+    │   │   └── Pass.js
+    │   └── shaders/        # Shader dependencies for post-processing
+    │       ├── CopyShader.js
+    │       ├── LuminosityHighPassShader.js
+    │       └── OutputShader.js
     └── tween/              # Tween.js animation library
         └── tween.esm.js
 ```
@@ -144,8 +156,10 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 - **Show Performance Stats**: Show live FPS / frame time / render calls / triangles / geometries
 
 ### Quality Mode
-- **Performance** (default): Lower geometry tessellation + 1024 shadow map for smoother frame pacing
+- **Performance** (default fallback): Lower geometry tessellation + 1024 shadow map for smoother frame pacing
 - **High**: Higher tessellation + 2048 shadow map for better visual fidelity
+- **Glossy (Bloom)**: Full cinematic post-processing chain (UnrealBloom) + enhanced deep-space background. On top of High settings, the sun, bright stars and motion trails glow
+- **Auto Quality**: On startup the app picks a mode from device capability hints (CPU cores, mobile UA, screen size, DPR). In Glossy mode it keeps monitoring average FPS and auto-downgrades to High once if the frame rate stays below ~34 FPS. Manually picking a mode in the control panel disables auto-adjustment
 
 ### Center Planet
 - 9 buttons corresponding to Sun and 8 planets
@@ -203,6 +217,14 @@ Each planet features unique procedurally generated textures:
 - **Saturn**: Banded pattern with rings and a faint atmosphere
 - **Uranus**: Noise pattern with faint vertical rings
 - **Neptune**: Noise pattern
+
+### Deep-Space Background (Glossy upgrade)
+- **Nebula sky dome**: Seamlessly wrapped procedural FBM nebula (purple/magenta/cyan) with a tilted Milky-Way band and embedded unresolved star dust
+- **Twinkling star fields**: ~13k shader-driven stars (cold white / warm / blue-white) with per-star phase twinkle, plus a dense band-star disc
+- **Distant spiral galaxies**: Six billboarded procedural galaxy sprites slowly rotating in the far field
+- **Meteors**: Occasional shooting stars streaking across the sky (every 5–17 s)
+- **Dynamic solar plasma**: An additive FBM plasma layer flows over the static sun texture (stronger in Glossy mode)
+- **Saturn ring halo**: A faint additive outer ring beyond the main rings
 
 ### Bilingual Support
 - Automatic language detection based on browser settings
