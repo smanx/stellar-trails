@@ -1648,6 +1648,10 @@ Geoms: --</div>
             if (typeof applySceneGlossMode === 'function') {
                 applySceneGlossMode(config.qualityMode === 'glossy');
             }
+            // 几何体被重建后包围球失效，重新同步相机最小距离
+            if (typeof syncCameraMinDistance === 'function') {
+                syncCameraMinDistance();
+            }
         }
 
         // --- 自动画质：按设备能力选初始档位，华丽模式下持续监测掉帧并自动降级 ---
@@ -2137,10 +2141,71 @@ Geoms: --</div>
 
             scene.userData.starField = starField;
             scene.userData.deepStarField = bandStars;
-            scene.userData.skyMaterials = [starField.material, bandStars.material];
+            scene.userData.nebulaSphere = nebulaSphere;
+            scene.userData.bandStars = bandStars;            scene.userData.skyMaterials = [starField.material, bandStars.material];
             scene.userData.nebulaMat = nebulaMat;
             scene.userData.galaxyGroup = galaxyGroup;
             scene.userData.galaxySprites = galaxySprites;
+        }
+
+        // 深空背景视差：不同距离层随相机做极轻微反向位移，产生纵深感
+        const skyParallax = {
+            nebulaOffset: new THREE.Vector3(),
+            starsOffset: new THREE.Vector3(),
+            galaxiesOffset: new THREE.Vector3(),
+            baseNebula: new THREE.Vector3(),
+            baseStars: new THREE.Vector3(),
+            baseGalaxies: new THREE.Vector3(),
+            captured: false
+        };
+
+        function updateSkyParallax() {
+            const nebula = scene.userData.nebulaSphere;
+            const stars = scene.userData.starField;
+            const band = scene.userData.bandStars;
+            const galaxies = scene.userData.galaxyGroup;
+            if (!nebula) return;
+
+            if (!skyParallax.captured) {
+                skyParallax.baseNebula.copy(nebula.position);
+                if (stars) skyParallax.baseStars.copy(stars.position);
+                if (galaxies) skyParallax.baseGalaxies.copy(galaxies.position);
+                skyParallax.captured = true;
+            }
+
+            // 相机位置相对原点，按层级衰减（越远层位移越小 → 视差）
+            const cx = camera.position.x;
+            const cy = camera.position.y;
+            const cz = camera.position.z;
+            const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+
+            // 星云天球：最远层，位移最小
+            nebula.position.set(
+                skyParallax.baseNebula.x - clamp(cx * 0.035, 90),
+                skyParallax.baseNebula.y - clamp(cy * 0.035, 90),
+                skyParallax.baseNebula.z - clamp(cz * 0.035, 90)
+            );
+
+            // 星场：中远层
+            if (stars) {
+                stars.position.set(
+                    skyParallax.baseStars.x - clamp(cx * 0.06, 140),
+                    skyParallax.baseStars.y - clamp(cy * 0.06, 140),
+                    skyParallax.baseStars.z - clamp(cz * 0.06, 140)
+                );
+            }
+            if (band) {
+                band.position.copy(stars ? stars.position : skyParallax.baseStars);
+            }
+
+            // 旋涡星系：较近层，位移最大
+            if (galaxies) {
+                galaxies.position.set(
+                    skyParallax.baseGalaxies.x - clamp(cx * 0.11, 240),
+                    skyParallax.baseGalaxies.y - clamp(cy * 0.11, 240),
+                    skyParallax.baseGalaxies.z - clamp(cz * 0.11, 240)
+                );
+            }
         }
 
         // 华丽/常规模式切换时调整深空背景表现
@@ -3093,30 +3158,34 @@ Geoms: --</div>
             uniform float uIntensity;
             varying vec2 vUv;
             varying vec3 vPos;
-            // 简易 GLSL 值噪声
-            float hash(vec2 p) {
-                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            // 3D 值噪声：直接在球面三维坐标上采样，任意方向都连续无缝
+            float hash3(vec3 p) {
+                return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
             }
-            float noise(vec2 p) {
-                vec2 i = floor(p); vec2 f = fract(p);
-                vec2 u = f * f * (3.0 - 2.0 * f);
-                return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-                           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+            float noise3(vec3 p) {
+                vec3 i = floor(p); vec3 f = fract(p);
+                vec3 u = f * f * (3.0 - 2.0 * f);
+                return mix(
+                    mix(mix(hash3(i + vec3(0.0, 0.0, 0.0)), hash3(i + vec3(1.0, 0.0, 0.0)), u.x),
+                        mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+                    mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x),
+                        mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+                    u.z);
             }
-            float fbm(vec2 p) {
+            float fbm3(vec3 p) {
                 float v = 0.0; float a = 0.5;
                 for (int i = 0; i < 4; i++) {
-                    v += a * noise(p);
+                    v += a * noise3(p);
                     p *= 2.03; a *= 0.5;
                 }
                 return v;
             }
             void main() {
-                // 以球面坐标为域，随时间流动的双层 FBM
-                vec2 sph = vec2(atan(vPos.z, vPos.x), asin(clamp(vPos.y / 20.0, -1.0, 1.0)));
-                float n1 = fbm(sph * 3.0 + vec2(uTime * 0.05, uTime * 0.021));
-                float n2 = fbm(sph * 6.5 - vec2(uTime * 0.032, -uTime * 0.014));
-                float plasma = smoothstep(0.68, 0.98, n1 * 0.6 + n2 * 0.4);
+                // 归一化球面坐标作为噪声域，随时间的位移通过坐标偏移实现
+                vec3 dir = normalize(vPos);
+                float n1 = fbm3(dir * 2.2 + vec3(uTime * 0.035, uTime * 0.015, -uTime * 0.022));
+                float n2 = fbm3(dir * 5.4 - vec3(uTime * 0.021, -uTime * 0.012, uTime * 0.018));
+                float plasma = smoothstep(0.62, 0.96, n1 * 0.6 + n2 * 0.4);
                 vec3 hot = vec3(1.0, 0.92, 0.72);
                 vec3 glow = vec3(1.0, 0.55, 0.18);
                 vec3 col = mix(glow, hot, plasma);
@@ -3288,6 +3357,125 @@ Geoms: --</div>
         
         worldGroup.add(sunObj.mesh);
 
+        // === 太阳耀斑 ===
+        // 日面边缘偶发喷出的小弧状亮弧，带淡入淡出，增强太阳的活跃感。
+        const flareState = {
+            nextSpawnMs: 9000,
+            active: []
+        };
+
+        function createFlareArcTexture() {
+            const w = 256, h = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.globalCompositeOperation = 'lighter';
+
+            const cx = w / 2;
+
+            // 清晰的拱形弧线：多条同心弧叠加成一根有厚度的亮弧
+            for (let i = 0; i < 40; i++) {
+                const t = i / 39;
+                // 弧线主体，两端稍暗、中段最亮
+                const alpha = Math.pow(Math.sin(Math.PI * t), 0.75) * 0.9;
+                const radius = 62 + t * 14;
+                const green = Math.round(205 + t * 45);
+                const blue = Math.round(110 + t * 105);
+                ctx.strokeStyle = `rgba(255, ${green}, ${blue}, ${alpha})`;
+                ctx.lineWidth = 2 + Math.sin(Math.PI * t) * 3;
+                ctx.beginPath();
+                // 从左侧起拱到右侧，形成明显拱形
+                ctx.arc(cx, h * 0.74, radius, Math.PI * 1.06, Math.PI * 1.94);
+                ctx.stroke();
+            }
+
+            // 弧顶内侧的薄雾，很轻，避免糊成一团白
+            const glow = ctx.createRadialGradient(cx, h * 0.42, 0, cx, h * 0.42, w * 0.22);
+            glow.addColorStop(0, 'rgba(255, 220, 165, 0.28)');
+            glow.addColorStop(1, 'rgba(255, 150, 60, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, w, h);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+        }
+
+        const flareTexture = createFlareArcTexture();
+
+        function spawnFlare(nowMs) {
+            const mat = new THREE.SpriteMaterial({
+                map: flareTexture,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: false,   // 固定在朝向相机的轮廓上，不会被日面遮挡
+                toneMapped: false,
+                fog: false
+            });
+            const sprite = new THREE.Sprite(mat);
+
+            // 把耀斑固定在朝向相机的可见边缘（limb），避免被日面本体遮挡
+            const sunWorldPos = new THREE.Vector3();
+            sunObj.mesh.getWorldPosition(sunWorldPos);
+            const viewDir = new THREE.Vector3().subVectors(camera.position, sunWorldPos).normalize();
+            const upRef = Math.abs(viewDir.y) > 0.9
+                ? new THREE.Vector3(1, 0, 0)
+                : new THREE.Vector3(0, 1, 0);
+            const limbDir = new THREE.Vector3().crossVectors(viewDir, upRef).normalize();
+            // 沿视线轴随机旋转，让耀斑出现在轮廓的不同位置
+            limbDir.applyAxisAngle(viewDir, Math.random() * Math.PI * 2);
+
+            const flareWorld = sunWorldPos.clone().addScaledVector(limbDir, 20 * 0.99);
+            const localPos = sunObj.mesh.worldToLocal(flareWorld.clone());
+            sprite.position.copy(localPos);
+
+            const sc = 46 + Math.random() * 22;
+            sprite.scale.set(sc, sc * 0.9, 1);
+            sprite.material.rotation = Math.random() * Math.PI * 2;
+            sprite.userData = {
+                born: nowMs,
+                life: 1900 + Math.random() * 1500,
+                peak: 0.85 + Math.random() * 0.35,
+                drift: 0.5 + Math.random() * 0.8,
+                dir: localPos.clone().normalize()
+            };
+            sprite.renderOrder = 4;
+            sunObj.mesh.add(sprite);
+            flareState.active.push(sprite);
+        }
+
+        function updateFlares(nowMs) {
+            for (let i = flareState.active.length - 1; i >= 0; i--) {
+                const sprite = flareState.active[i];
+                const d = sprite.userData;
+                const p = (nowMs - d.born) / d.life;
+                if (p >= 1) {
+                    sunObj.mesh.remove(sprite);
+                    sprite.material.dispose();
+                    flareState.active.splice(i, 1);
+                    continue;
+                }
+                // 快速起、缓慢落
+                const env = Math.sin(Math.PI * Math.pow(p, 0.55));
+                sprite.material.opacity = env * d.peak;
+                // 缓慢向外漂移
+                sprite.position.addScaledVector(d.dir, d.drift * 0.014);
+                const grow = 1 + p * 0.35;
+                sprite.scale.set(
+                    sprite.scale.x / (1 + (grow - 1) * 0.02),
+                    sprite.scale.y / (1 + (grow - 1) * 0.02),
+                    1
+                );
+            }
+
+            if (nowMs >= flareState.nextSpawnMs && flareState.active.length < 2) {
+                spawnFlare(nowMs);
+                flareState.nextSpawnMs = nowMs + 7000 + Math.random() * 9000;
+            }
+        }
+
         // 静态轨道组
         const staticOrbits = new THREE.Group();
         staticOrbits.visible = false; // 隐藏静态轨道，只显示拖影
@@ -3433,6 +3621,175 @@ Geoms: --</div>
             mesh.add(halo);
         }
 
+        // === 海面镜面高光（地球专用） ===
+        // 用粗糙度贴图作为遮罩：只有海洋（低粗糙度）区域产生锐利的太阳镜面反射，
+        // 让“水”真的反光，而不是整颗球都像哑光塑料。
+        const oceanGlintVertexShader = `
+            varying vec2 vUv;
+            varying vec3 vWorldNormal;
+            varying vec3 vWorldPos;
+            void main() {
+                vUv = uv;
+                vWorldNormal = normalize(mat3(modelMatrix) * normal);
+                vec4 wp = modelMatrix * vec4(position, 1.0);
+                vWorldPos = wp.xyz;
+                gl_Position = projectionMatrix * viewMatrix * wp;
+            }
+        `;
+
+        const oceanGlintFragmentShader = `
+            uniform sampler2D uRoughMap;
+            uniform vec3 uSunPos;
+            uniform vec3 uCamPos;
+            uniform vec3 uColor;
+            uniform float uIntensity;
+            varying vec2 vUv;
+            varying vec3 vWorldNormal;
+            varying vec3 vWorldPos;
+            void main() {
+                float rough = texture2D(uRoughMap, vUv).r;
+                // 低粗糙度 = 海洋，遮罩反比
+                float oceanMask = 1.0 - smoothstep(0.18, 0.55, rough);
+                if (oceanMask <= 0.001) discard;
+
+                vec3 N = normalize(vWorldNormal);
+                vec3 L = normalize(uSunPos - vWorldPos);
+                vec3 V = normalize(uCamPos - vWorldPos);
+                vec3 H = normalize(L + V);
+                // 锐利的 Blinn-Phong 高光，指数很高 = 阳光在海上的一点亮斑
+                float spec = pow(max(dot(N, H), 0.0), 90.0);
+                // 掠射角增强（水面在低角度看更亮）
+                float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+                float a = (spec * 1.4 + fresnel * 0.16) * oceanMask * uIntensity;
+                gl_FragColor = vec4(uColor, a);
+            }
+        `;
+
+        function createOceanGlint(mesh, planetSize, roughnessMap) {
+            const uniforms = {
+                uRoughMap: { value: roughnessMap },
+                uSunPos: { value: new THREE.Vector3(0, 0, 0) },
+                uCamPos: { value: new THREE.Vector3() },
+                uColor: { value: new THREE.Color(0xfff0d0) },
+                uIntensity: { value: 1.0 }
+            };
+            const mat = new THREE.ShaderMaterial({
+                uniforms,
+                vertexShader: oceanGlintVertexShader,
+                fragmentShader: oceanGlintFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.FrontSide
+            });
+            const glint = new THREE.Mesh(
+                new THREE.SphereGeometry(planetSize * 1.012, qualityProfile.atmosphere, qualityProfile.atmosphere),
+                mat
+            );
+            glint.userData.isAtmosphereLayer = true;
+            glint.userData.atmosphereScale = 1.012;
+            glint.userData.isOceanGlint = true;
+            mesh.add(glint);
+            return uniforms;
+        }
+
+        // === 拖影渐变渲染 ===
+        // 自建带“年龄”属性的管道几何：头部（最新采样）粗且亮，尾部细且淡，
+        // 让拖影呈现出运动拖尾的速度感，而不是等宽等亮的死线。
+        const trailVertexShader = `
+            attribute float aT;
+            varying float vT;
+            void main() {
+                vT = aT;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const trailFragmentShader = `
+            uniform vec3 uColor;
+            uniform float uOpacity;
+            varying float vT;
+            void main() {
+                float head = smoothstep(0.0, 1.0, vT);
+                // 尾部快速衰减，头部保持明亮
+                float a = pow(head, 1.6) * uOpacity;
+                // 头部略微提亮，但不至于被 bloom 冲成白团
+                vec3 col = mix(uColor * 0.6, mix(uColor, vec3(1.0), 0.16), head);
+                gl_FragColor = vec4(col, a);
+            }
+        `;
+
+        function createTrailMaterial(color, opacity) {
+            return new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(color) },
+                    uOpacity: { value: opacity }
+                },
+                vertexShader: trailVertexShader,
+                fragmentShader: trailFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                toneMapped: false
+            });
+        }
+
+        // 生成沿路径渐变的管道几何（aT: 0 = 尾，1 = 头）
+        function createTrailGeometry(curve, tubularSegments, radius, radialSegments) {
+            const geometry = new THREE.BufferGeometry();
+            if (!curve || !curve.points || curve.points.length < 2 || tubularSegments < 1) {
+                return geometry;
+            }
+
+            const frames = curve.computeFrenetFrames(tubularSegments, false);
+            const positions = [];
+            const tValues = [];
+            const indices = [];
+            const P = new THREE.Vector3();
+            const N = new THREE.Vector3();
+            const rowLength = radialSegments + 1;
+
+            for (let i = 0; i <= tubularSegments; i++) {
+                const t = i / tubularSegments;
+                curve.getPointAt(t, P);
+                // 半径从尾部到头部渐粗
+                const segmentRadius = radius * (0.26 + 0.74 * Math.pow(t, 0.7));
+                const normal = frames.normals[i];
+                const binormal = frames.binormals[i];
+                for (let j = 0; j <= radialSegments; j++) {
+                    const v = (j / radialSegments) * Math.PI * 2;
+                    const sin = Math.sin(v);
+                    const cos = -Math.cos(v);
+                    N.set(
+                        cos * normal.x + sin * binormal.x,
+                        cos * normal.y + sin * binormal.y,
+                        cos * normal.z + sin * binormal.z
+                    ).normalize();
+                    positions.push(
+                        P.x + segmentRadius * N.x,
+                        P.y + segmentRadius * N.y,
+                        P.z + segmentRadius * N.z
+                    );
+                    tValues.push(t);
+                }
+            }
+
+            for (let i = 1; i <= tubularSegments; i++) {
+                for (let j = 1; j <= radialSegments; j++) {
+                    const a = rowLength * (i - 1) + (j - 1);
+                    const b = rowLength * i + (j - 1);
+                    const c = rowLength * i + j;
+                    const d = rowLength * (i - 1) + j;
+                    indices.push(a, b, d, b, c, d);
+                }
+            }
+
+            geometry.setIndex(indices);
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1));
+            return geometry;
+        }
+
         // 创建行星
         planetsData.forEach(data => {
             // 创建静态轨道
@@ -3486,6 +3843,12 @@ Geoms: --</div>
                 createAtmosphereLayers(mesh, data.size, visualPreset.atmosphere, atmosphereUniforms);
             }
             mesh.userData.atmosphereUniforms = atmosphereUniforms;
+
+            // 地球：海面镜面高光层（用粗糙度贴图遮罩，只在海洋反光）
+            if (data.nameEn === 'Earth' && planetTextures.roughnessMap) {
+                const glintUniforms = createOceanGlint(mesh, data.size, planetTextures.roughnessMap);
+                atmosphereUniforms.push(glintUniforms);
+            }
 
             // 云层（地球）
             let cloudLayer = null;
@@ -3570,14 +3933,7 @@ Geoms: --</div>
             // 统一使用配置的拖影长度，允许为0
             const trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
             
-            const trailMat = new THREE.MeshBasicMaterial({ 
-                color: data.color, 
-                transparent: true, 
-                opacity: 0.75,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                toneMapped: false
-            });
+            const trailMat = createTrailMaterial(data.color, 0.85);
             
             // 创建一个空的管道网格，稍后会根据路径点重新生成
             const trailMesh = new THREE.Mesh(new THREE.BufferGeometry(), trailMat);
@@ -3621,14 +3977,7 @@ Geoms: --</div>
         // 太阳拖影（使用TubeGeometry）
         sunObj.trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
         sunObj.trailLine = {
-            mesh: new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
-                color: 0xFFCC00,
-                transparent: true,
-                opacity: 0.55,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                toneMapped: false
-            })),
+            mesh: new THREE.Mesh(new THREE.BufferGeometry(), createTrailMaterial(0xFFCC00, 0.7)),
             curve: new THREE.CatmullRomCurve3([]),
             points: [],
             buffer: [],
@@ -3645,14 +3994,7 @@ Geoms: --</div>
 
         // --- 月球（地球的卫星） ---
         const moonParentPlanet = planets.find(p => p.nameEn === 'Earth');
-        const moonTrailMat = new THREE.MeshBasicMaterial({
-            color: 0xcccccc,
-            transparent: true,
-            opacity: 0.7,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            toneMapped: false
-        });
+        const moonTrailMat = createTrailMaterial(0xcccccc, 0.8);
         const moonTrailMesh = new THREE.Mesh(new THREE.BufferGeometry(), moonTrailMat);
         moonTrailMesh.frustumCulled = false;
         moonTrailMesh.visible = false;
@@ -3687,7 +4029,7 @@ Geoms: --</div>
                 visible: false
             },
             trailPoints: [],
-            trailLength: Math.max(0, Math.floor(config.trailMaxPoints * 0.6)),
+            trailLength: Math.max(0, Math.floor(config.trailMaxPoints * 0.22)),
             angle: Math.random() * Math.PI * 2,
             baseSpeed: 0.05,
             orbitRadius: 9.0,
@@ -4332,12 +4674,31 @@ Geoms: --</div>
             }
         }
 
+        function syncCameraMinDistance() {
+            // 相机最小距离随目标尺寸自适应：小行星也能拉近观察表面细节
+            const planet = (typeof lockedPlanet !== 'undefined') ? lockedPlanet : null;
+            let targetSize = 2;
+            if (planet && planet.mesh && planet.mesh.geometry) {
+                const geo = planet.mesh.geometry;
+                if (!geo.boundingSphere) {
+                    geo.computeBoundingSphere();
+                }
+                if (geo.boundingSphere) {
+                    targetSize = geo.boundingSphere.radius;
+                } else if (typeof planet.size === 'number') {
+                    targetSize = planet.size;
+                }
+            }
+            controls.minDistance = Math.max(targetSize * 1.25, 2);
+        }
+
         function finishCenterSwitch(planet) {
             selectedPlanet = planet;
             lockedPlanet = planet;
             clearTrails();
             setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
+            syncCameraMinDistance();
         }
 
         function centerOnPlanet(planet, animate = true) {
@@ -4546,6 +4907,11 @@ Geoms: --</div>
                 }
             }
 
+            // 深空背景视差（越远层位移越小）
+            if (!prefersReducedMotion) {
+                updateSkyParallax();
+            }
+
             // 大气层菲涅尔辉光随视角/光源动态更新
             sunObj.mesh.getWorldPosition(atmSunPos);
             planets.forEach(p => {
@@ -4584,6 +4950,11 @@ Geoms: --</div>
                 sunObj.plasmaMaterial.uniforms.uTime.value = nowMs * 0.001;
             }
 
+            // 太阳耀斑（偶发喷发）
+            if (!prefersReducedMotion) {
+                updateFlares(nowMs);
+            }
+
             if (lockedPlanet && !cameraTransitionActive) {
                 worldGroup.position.set(-lockedPlanet.mesh.position.x, 0, -lockedPlanet.mesh.position.z);
             }
@@ -4617,12 +4988,14 @@ Geoms: --</div>
                         if (trailLine.count >= 2) {
                             syncTrailPointsFromBuffer(trailLine);
                             trailLine.mesh.geometry.dispose();
-                            trailLine.mesh.geometry = new THREE.TubeGeometry(
+                            // 分段数随采样点增长：拖影点越多（尤其月球相对太阳的外摆线），
+                            // 曲线越复杂，固定 64 段会让环变成棱角多边形
+                            const tubularSegments = Math.max(2, Math.min(220, trailLine.points.length));
+                            trailLine.mesh.geometry = createTrailGeometry(
                                 trailLine.curve,
-                                Math.min(64, trailLine.points.length),
+                                tubularSegments,
                                 config.orbitThickness * 0.5,
-                                config.trailTubeRadialSegments[config.qualityMode] || config.trailTubeRadialSegments.performance,
-                                false
+                                config.trailTubeRadialSegments[config.qualityMode] || config.trailTubeRadialSegments.performance
                             );
                             setTrailMeshVisible(trailLine, true);
                         } else {
@@ -4665,6 +5038,7 @@ Geoms: --</div>
         lockedPlanet = sunObj;
         setCenterViewName(sunObj);
         updateCenterButton('sun');
+        syncCameraMinDistance();
 
         // 开始动画
         animate();

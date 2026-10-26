@@ -221,10 +221,17 @@ Each planet features unique procedurally generated textures:
 ### Deep-Space Background (Glossy upgrade)
 - **Nebula sky dome**: Seamlessly wrapped procedural FBM nebula (purple/magenta/cyan) with a tilted Milky-Way band and embedded unresolved star dust
 - **Twinkling star fields**: ~13k shader-driven stars (cold white / warm / blue-white) with per-star phase twinkle, plus a dense band-star disc
+- **Parallax depth**: Nebula, star fields and distant galaxies shift at different rates as the camera moves, giving the sky real depth
 - **Distant spiral galaxies**: Six billboarded procedural galaxy sprites slowly rotating in the far field
 - **Meteors**: Occasional shooting stars streaking across the sky (every 5–17 s)
-- **Dynamic solar plasma**: An additive FBM plasma layer flows over the static sun texture (stronger in Glossy mode)
+- **Dynamic solar plasma**: A seamless 3D-noise FBM plasma layer flows over the static sun texture (stronger in Glossy mode)
+- **Solar flares**: Arc-shaped prominences occasionally erupt from the sun's limb facing the camera, then fade
+- **Ocean glints**: Earth's oceans produce a sharp specular sun highlight masked by the roughness map, while land stays matte
 - **Saturn ring halo**: A faint additive outer ring beyond the main rings
+
+### Motion Trails (Glossy upgrade)
+- Trails now fade and taper along their length: bright and thick at the head (newest sample), thin and dim at the tail, giving a real sense of speed
+- Trail tube segments scale with sample count, so complex paths (like the Moon's epicycloid seen from the Sun) stay smooth instead of turning into angular polygons
 
 ### Bilingual Support
 - Automatic language detection based on browser settings
