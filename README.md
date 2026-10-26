@@ -232,7 +232,7 @@ Each planet features unique procedurally generated textures:
 - **Meteors**: Occasional shooting stars streaking across the sky (every 5–17 s)
 - **Dynamic solar plasma**: A seamless 3D-noise FBM plasma layer flows over the static sun texture (stronger in Glossy mode)
 - **Irregular sun rays**: Seven rays of differing length, width and brightness instead of a symmetric four-point cross
-- **Solar flares**: Arc-shaped prominences occasionally erupt from the sun's limb facing the camera, then fade
+- **Solar prominences**: Irregular plasma filaments occasionally rise from the sun's limb, then dissipate. Deliberately built from hundreds of noisy line segments rather than a geometric arc — a clean circular arc reads as a UI loading spinner on screen
 - **Ocean glints**: Earth's oceans produce a sharp specular sun highlight masked by the roughness map, while land stays matte
 - **Saturn ring shadow**: The rings cast shadows onto the planet's cloud tops, and a faint additive halo ring sits outside the main rings
 
