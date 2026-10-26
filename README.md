@@ -67,7 +67,7 @@ Then visit: http://localhost:8000
 ```
 
 ### Offline Usage
-All dependencies are downloaded to the local `libs/` directory. The application supports complete offline operation without any network connection.
+All dependencies are downloaded to the local `libs/` directory. The application supports complete offline operation without any network connection — including web fonts (Inter and Orbitron are bundled locally in `libs/fonts/`). Verified: the page makes zero external network requests.
 
 ## 📁 Project Structure
 
@@ -98,6 +98,11 @@ All dependencies are downloaded to the local `libs/` directory. The application 
     │       └── OutputShader.js
     └── tween/              # Tween.js animation library
         └── tween.esm.js
+    └── fonts/              # Local web fonts (offline)
+        ├── fonts.css
+        ├── inter-latin.woff2
+        ├── inter-latin-ext.woff2
+        └── orbitron-latin.woff2
 ```
 
 ## 🎮 User Guide

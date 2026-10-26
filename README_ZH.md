@@ -67,7 +67,7 @@ npx http-server -p 8000
 ```
 
 ### 离线使用
-所有依赖已下载到本地 `libs/` 目录，完全支持离线运行，无需网络连接。
+所有依赖已下载到本地 `libs/` 目录，完全支持离线运行，无需网络连接——包括网络字体（Inter 与 Orbitron 已打包在 `libs/fonts/`）。已验证：页面不发起任何外部网络请求。
 
 ## 📁 项目结构
 
@@ -98,6 +98,11 @@ npx http-server -p 8000
     │       └── OutputShader.js
     └── tween/              # Tween.js 动画库
         └── tween.esm.js
+    └── fonts/              # 本地字体（离线可用）
+        ├── fonts.css
+        ├── inter-latin.woff2
+        ├── inter-latin-ext.woff2
+        └── orbitron-latin.woff2
 ```
 
 ## 🎮 使用指南
