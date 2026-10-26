@@ -1965,7 +1965,11 @@ Geoms: --</div>
                     const detail = fbmPeriodic(nx * 2 + 9.7, ny * 2 + 4.1, P * 2, 4);
 
                     // 银河带：带波浪中心的亮带 + 尘埃暗纹
-                    const bandCenter = 0.5 + 0.055 * Math.sin(u * Math.PI * 4 + 1.2) + 0.03 * Math.sin(u * Math.PI * 9 + 4.0);
+                    // 注意：经度方向的所有周期项都必须是整数个整周期，
+                    // 否则 u=0 与 u=1 处取值不衔接，贴图会裂出一条竖向接缝。
+                    // sin(u*π*4) = 2 个整周期，sin(u*π*8) = 4 个整周期 ✓
+                    // （原来是 sin(u*π*9) = 4.5 个周期，两端反号，正是接缝的来源）
+                    const bandCenter = 0.5 + 0.055 * Math.sin(u * Math.PI * 4 + 1.2) + 0.03 * Math.sin(u * Math.PI * 8 + 4.0);
                     const dv = v - bandCenter;
                     const band = Math.exp(-(dv * dv) / (2 * 0.075 * 0.075));
                     const bandDust = 0.45 + 0.55 * fbmPeriodic(nx * 3 + 3.3, ny * 3 + 8.8, P * 3, 3);
