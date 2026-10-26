@@ -1496,6 +1496,8 @@ Geoms: --</div>
                 high: 8,
                 glossy: 8
             },
+            // 当前行星纹理宽度（用于判断是否需要重建贴图）
+            planetTextureSize: 1024,
             bloom: {
                 glossy: { strength: 0.85, radius: 0.55, threshold: 0.82 },
                 performance: { strength: 0, radius: 0, threshold: 1.01 }
@@ -1572,7 +1574,9 @@ Geoms: --</div>
             }
         }
 
-        scene.fog = new THREE.FogExp2(0x060a18, 0.0007);
+        // 景深雾化：让远处行星略微融入背景，形成远近层次
+        // 密度很克制，避免遮住主体；随画质档位略作调整
+        scene.fog = new THREE.FogExp2(0x0a1024, 0.0011);
 
         const worldGroup = new THREE.Group(); 
         scene.add(worldGroup);
@@ -1629,6 +1633,44 @@ Geoms: --</div>
                         child.geometry = new THREE.SphereGeometry(p.size * scale, profile.cloud, profile.cloud);
                     }
                 });
+            });
+
+            // 纹理分辨率随档位变化：重新生成行星贴图
+            rebuildPlanetTextures();
+        }
+
+        // 按当前画质档位重建行星贴图（分辨率与各向异性会变）
+        function rebuildPlanetTextures() {
+            const size = getPlanetTextureSize();
+            if (config.planetTextureSize === size.w) {
+                return; // 分辨率没变，无需重建
+            }
+            config.planetTextureSize = size.w;
+
+            planets.forEach(p => {
+                const visualPreset = getPlanetVisualPreset(p.nameEn);
+                const oldTextures = p.textures;
+                const newTextures = createPlanetTexture(p.nameEn, visualPreset);
+
+                const mat = p.mesh.material;
+                mat.map = newTextures.map;
+                mat.bumpMap = newTextures.bumpMap;
+                mat.roughnessMap = newTextures.roughnessMap || null;
+                mat.needsUpdate = true;
+
+                // 地球海面高光层依赖粗糙度贴图，需要同步换新
+                if (p.oceanGlintUniforms && newTextures.roughnessMap) {
+                    p.oceanGlintUniforms.uRoughMap.value = newTextures.roughnessMap;
+                }
+
+                // 释放旧贴图
+                if (oldTextures) {
+                    if (oldTextures.map) oldTextures.map.dispose();
+                    if (oldTextures.bumpMap) oldTextures.bumpMap.dispose();
+                    if (oldTextures.roughnessMap) oldTextures.roughnessMap.dispose();
+                }
+
+                p.textures = newTextures;
             });
         }
 
@@ -1952,25 +1994,10 @@ Geoms: --</div>
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // 带内密集“不可分辨星点”
-            ctx.globalCompositeOperation = 'lighter';
-            for (let i = 0; i < 900; i++) {
-                const u = Math.random();
-                const bandCenter = 0.5 + 0.055 * Math.sin(u * Math.PI * 4 + 1.2) + 0.03 * Math.sin(u * Math.PI * 9 + 4.0);
-                const v = bandCenter + ((Math.random() + Math.random() + Math.random()) - 1.5) * 0.075;
-                const px = u * w;
-                const py = (((v % 1) + 1) % 1) * h;
-                const bright = Math.random();
-                const rad = bright > 0.95 ? 1.1 : 0.4 + bright * 0.6;
-                const warm = Math.random() < 0.18;
-                ctx.fillStyle = warm
-                    ? `rgba(255,220,170,${0.18 + bright * 0.45})`
-                    : `rgba(210,228,255,${0.15 + bright * 0.5})`;
-                ctx.beginPath();
-                ctx.arc(px, py, rad, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            ctx.globalCompositeOperation = 'source-over';
+            // 注意：这里刻意不绘制任何“星点”。
+            // 贴图铺在半径 3200 的天球上，1 像素在这里等于约 6 个世界单位，
+            // 画上去的点会被放大成模糊白斑。清晰的恒星一律由
+            // createStarPoints() 的着色器星场提供。
 
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
@@ -1980,11 +2007,12 @@ Geoms: --</div>
 
         // 远景旋涡星系贴图：亮核 + 两条对数旋臂
         function createGalaxyTexture() {
-            const s = 256;
+            const s = 512;
             const canvas = document.createElement('canvas');
             canvas.width = s; canvas.height = s;
             const ctx = canvas.getContext('2d');
             const cx = s / 2, cy = s / 2;
+            const k = s / 256; // 以原 256 尺寸为基准等比缩放
 
             const disc = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
             disc.addColorStop(0, 'rgba(255,240,220,0.9)');
@@ -1997,24 +2025,24 @@ Geoms: --</div>
             ctx.globalCompositeOperation = 'lighter';
             for (let arm = 0; arm < 2; arm++) {
                 const baseAngle = arm * Math.PI;
-                for (let i = 0; i < 700; i++) {
+                for (let i = 0; i < 2400; i++) {
                     const t = Math.pow(Math.random(), 0.8);
                     const theta = baseAngle + t * 3.6;
-                    const rad = 10 + t * 108;
-                    const spread = 4 + t * 16;
+                    const rad = (10 + t * 108) * k;
+                    const spread = (4 + t * 16) * k;
                     const px = cx + Math.cos(theta) * rad + (Math.random() + Math.random() - 1) * spread;
                     const py = cy + Math.sin(theta) * rad * 0.62 + (Math.random() + Math.random() - 1) * spread * 0.62;
                     const fade = (1 - t) * 0.5 + 0.08;
                     const blue = Math.random() < 0.5;
                     ctx.fillStyle = blue
-                        ? `rgba(190,215,255,${fade * Math.random()})`
-                        : `rgba(255,225,190,${fade * Math.random() * 0.8})`;
+                        ? `rgba(190,215,255,${fade * Math.random() * 0.85})`
+                        : `rgba(255,225,190,${fade * Math.random() * 0.7})`;
                     ctx.beginPath();
-                    ctx.arc(px, py, 0.6 + Math.random() * 1.3, 0, Math.PI * 2);
+                    ctx.arc(px, py, 0.4 + Math.random() * 0.7, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
-            const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 26);
+            const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 26 * k);
             core.addColorStop(0, 'rgba(255,250,235,0.95)');
             core.addColorStop(0.4, 'rgba(255,230,190,0.4)');
             core.addColorStop(1, 'rgba(255,220,170,0)');
@@ -2411,9 +2439,27 @@ Geoms: --</div>
             for (let y = 0; y < h; y++) {
                 for (let x = 0; x < w; x++) {
                     const nx = x / w * 8; const ny = y / h * 4;
-                    const continent = fbm(nx + 1.7, ny + 3.2, 6, 2.0, 0.48);
+                    let continent = fbm(nx + 1.7, ny + 3.2, 6, 2.0, 0.48);
                     const detail = fbm(nx * 6, ny * 6, 4, 2.2, 0.42);
                     const latitude = Math.abs(y / h - 0.5) * 2;
+
+                    // 固定大陆地标：在贴图固定经纬度上抬升出一块清晰的大陆，
+                    // 让行星自转时能明显看出地表在移动（否则各向同性噪声转起来毫无变化）
+                    const u = x / w;
+                    const v = y / h;
+                    const landmarkDx = (u - 0.34);
+                    const landmarkDy = (v - 0.44);
+                    // 椭球距离场：模拟一块大陆的轮廓，边缘用噪声打碎
+                    const landmarkDist = Math.sqrt(
+                        (landmarkDx * landmarkDx) / 0.055 +
+                        (landmarkDy * landmarkDy) / 0.028
+                    );
+                    if (landmarkDist < 1.0) {
+                        const edgeNoise = (detail - 0.5) * 0.45;
+                        const lift = (1.0 - landmarkDist) * 0.30 + edgeNoise;
+                        continent += Math.max(0, lift);
+                    }
+
                     let c;
                     let height;
                     if (continent > 0.52) {
@@ -2693,11 +2739,11 @@ Geoms: --</div>
                     let height = 0.5 + (base - 0.5) * 0.5 + (detail - 0.5) * 0.3;
                     // 陨石坑
                     const craterNoise = fbm(nx * 6 + 7.3, ny * 6 + 2.1, 3, 2.5, 0.55);
-                    if (craterNoise > 0.6) {
-                        const craterDepth = (craterNoise - 0.6) / 0.4;
+                    if (craterNoise > 0.55) {
+                        const craterDepth = (craterNoise - 0.55) / 0.45;
                         const di = Math.floor(craterDepth * darkColors.length * 0.99);
                         c = lerpColor(darkColors[di], darkColors[Math.min(di + 1, darkColors.length - 1)], craterDepth);
-                        height -= craterDepth * 0.28;
+                        height -= craterDepth * 0.40;
                     }
                     // 月海（暗色斑块）
                     const mare = fbm(nx * 2.2 + 11.4, ny * 2.2 + 5.7, 3, 2.0, 0.5);
@@ -2892,13 +2938,22 @@ Geoms: --</div>
             return tex;
         }
 
+        // 行星纹理分辨率：随画质档位提升，近景细节更清晰
+        // 注意逐像素 FBM 生成较慢，2048 只在高/华丽档启用
+        function getPlanetTextureSize() {
+            return config.qualityMode === 'performance'
+                ? { w: 1024, h: 512 }
+                : { w: 2048, h: 1024 };
+        }
+
         function createPlanetTexture(nameEn, preset) {
             const gen = textureGenerators[nameEn];
             if (gen) {
-                const result = gen(1024, 512);
+                const size = getPlanetTextureSize();
+                const result = gen(size.w, size.h);
                 result.map.colorSpace = THREE.SRGBColorSpace;
-                result.map.anisotropy = 4;
-                result.bumpMap.anisotropy = 4;
+                result.map.anisotropy = 8;
+                result.bumpMap.anisotropy = 8;
                 if (preset && typeof preset.roughMin === 'number') {
                     result.roughnessMap = createRoughnessFromBump(
                         result.bumpMap.image,
@@ -3294,29 +3349,43 @@ Geoms: --</div>
             ctx.save();
             ctx.translate(cx, cy);
             ctx.lineCap = 'round';
-            for (let i = 0; i < 4; i++) {
+
+            // 7 条不等长、不等亮、不等角度的星芒：
+            // 真实恒星的光芒是柔和且不规则的，等长十字星芒会显得很“游戏化”
+            const rays = [
+                { angle: -0.32, len: 0.97, width: 3.4, bright: 0.95 },  // 主芒
+                { angle: 0.42,  len: 0.74, width: 2.6, bright: 0.62 },  // 次主芒
+                { angle: 1.68,  len: 0.88, width: 3.0, bright: 0.80 },
+                { angle: 2.35,  len: 0.56, width: 2.0, bright: 0.42 },
+                { angle: 3.14,  len: 0.66, width: 2.3, bright: 0.52 },
+                { angle: 4.21,  len: 0.46, width: 1.7, bright: 0.32 },
+                { angle: 5.36,  len: 0.60, width: 2.1, bright: 0.44 }
+            ];
+
+            for (const r of rays) {
                 ctx.save();
-                ctx.rotate(i * Math.PI / 2 + Math.PI / 4);
-                const len = cx * 0.97;
+                ctx.rotate(r.angle);
+                const len = cx * r.len;
                 const ray = ctx.createLinearGradient(0, 0, len, 0);
-                ray.addColorStop(0.0, 'rgba(255, 245, 220, 0.9)');
-                ray.addColorStop(0.12, 'rgba(255, 226, 170, 0.38)');
-                ray.addColorStop(0.5, 'rgba(255, 180, 100, 0.07)');
-                ray.addColorStop(1.0, 'rgba(255, 150, 70, 0)');
+                ray.addColorStop(0.0, `rgba(255, 246, 224, ${0.92 * r.bright})`);
+                ray.addColorStop(0.10, `rgba(255, 228, 176, ${0.42 * r.bright})`);
+                ray.addColorStop(0.42, `rgba(255, 184, 104, ${0.10 * r.bright})`);
+                ray.addColorStop(1.0, 'rgba(255, 152, 72, 0)');
                 ctx.strokeStyle = ray;
-                ctx.lineWidth = 3;
+                ctx.lineWidth = r.width;
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
                 ctx.lineTo(len, 0);
                 ctx.stroke();
-                // 细伴线（增加星芒层次感）
+
+                // 每根星芒旁的细伴线，位置随机偏移
                 ctx.save();
-                ctx.rotate(0.3);
-                ctx.strokeStyle = 'rgba(255, 230, 180, 0.3)';
-                ctx.lineWidth = 1.2;
+                ctx.rotate(0.22 + (r.angle % 0.4));
+                ctx.strokeStyle = `rgba(255, 232, 186, ${0.26 * r.bright})`;
+                ctx.lineWidth = Math.max(0.8, r.width * 0.32);
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
-                ctx.lineTo(len * 0.75, 0);
+                ctx.lineTo(len * 0.68, 0);
                 ctx.stroke();
                 ctx.restore();
                 ctx.restore();
@@ -3500,7 +3569,11 @@ Geoms: --</div>
             });
             const sprite = new THREE.Sprite(spriteMaterial);
             // 标签尺寸随行星大小缩放，避免小行星上方出现巨大的隐形矩形
-            sprite.scale.set(Math.max(28, planet.size * 5), Math.max(7, planet.size * 1.25), 1);
+            const baseW = Math.max(28, planet.size * 5);
+            const baseH = Math.max(7, planet.size * 1.25);
+            sprite.scale.set(baseW, baseH, 1);
+            // 记录基准尺寸，供动画循环按相机距离做屏幕尺寸补偿
+            sprite.userData.baseScale = new THREE.Vector3(baseW, baseH, 1);
             sprite.position.copy(position);
             
             // 更新标签文本的函数
@@ -3714,15 +3787,26 @@ Geoms: --</div>
                 // 尾部快速衰减，头部保持明亮
                 float a = pow(head, 1.6) * uOpacity;
                 // 头部略微提亮，但不至于被 bloom 冲成白团
-                vec3 col = mix(uColor * 0.6, mix(uColor, vec3(1.0), 0.16), head);
+                vec3 col = mix(uColor * 0.72, mix(uColor, vec3(1.0), 0.10), head);
                 gl_FragColor = vec4(col, a);
             }
         `;
 
         function createTrailMaterial(color, opacity) {
+            // 拖影颜色做降饱和 + 提亮处理：
+            // 行星的原始颜色（如地球纯蓝 0x2233FF）在暗背景上过于刺眼，
+            // 混入一点白色并降低饱和度，与深空色调更协调
+            const base = new THREE.Color(color);
+            const hsl = { h: 0, s: 0, l: 0 };
+            base.getHSL(hsl);
+            const softened = new THREE.Color().setHSL(
+                hsl.h,
+                hsl.s * 0.8,
+                Math.min(0.58, hsl.l * 1.05 + 0.10)
+            );
             return new THREE.ShaderMaterial({
                 uniforms: {
-                    uColor: { value: new THREE.Color(color) },
+                    uColor: { value: softened },
                     uOpacity: { value: opacity }
                 },
                 vertexShader: trailVertexShader,
@@ -3845,9 +3929,10 @@ Geoms: --</div>
             mesh.userData.atmosphereUniforms = atmosphereUniforms;
 
             // 地球：海面镜面高光层（用粗糙度贴图遮罩，只在海洋反光）
+            let oceanGlintUniforms = null;
             if (data.nameEn === 'Earth' && planetTextures.roughnessMap) {
-                const glintUniforms = createOceanGlint(mesh, data.size, planetTextures.roughnessMap);
-                atmosphereUniforms.push(glintUniforms);
+                oceanGlintUniforms = createOceanGlint(mesh, data.size, planetTextures.roughnessMap);
+                atmosphereUniforms.push(oceanGlintUniforms);
             }
 
             // 云层（地球）
@@ -3894,6 +3979,7 @@ Geoms: --</div>
                 const ring = new THREE.Mesh(ringGeometry, ringMaterial);
                 ring.rotation.x = Math.PI / 2.25;
                 ring.receiveShadow = true;
+                ring.castShadow = true;
                 mesh.add(ring);
 
                 // 外层稀散“光晕环”：半透明粒子感薄环，增强华丽感
@@ -3933,7 +4019,7 @@ Geoms: --</div>
             // 统一使用配置的拖影长度，允许为0
             const trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
             
-            const trailMat = createTrailMaterial(data.color, 0.85);
+            const trailMat = createTrailMaterial(data.color, 0.62);
             
             // 创建一个空的管道网格，稍后会根据路径点重新生成
             const trailMesh = new THREE.Mesh(new THREE.BufferGeometry(), trailMat);
@@ -3964,6 +4050,8 @@ Geoms: --</div>
                 ...data,
                 mesh,
                 cloudLayer,
+                textures: planetTextures,
+                oceanGlintUniforms,
                 trailLine,
                 trailPoints: [],
                 trailLength: trailLength,
@@ -3974,10 +4062,84 @@ Geoms: --</div>
             worldGroup.add(mesh);
         });
 
+        // === 小行星带 ===
+        // 位于火星(140)与木星(220)之间，用 InstancedMesh 保证性能。
+        // 带内做径向/高度/倾角扰动，避免看起来像一个规整的圆环。
+        function createAsteroidBelt() {
+            const count = 2400;
+            const innerRadius = 162;
+            const outerRadius = 198;
+
+            const geometry = new THREE.IcosahedronGeometry(0.34, 0);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x8a8078,
+                roughness: 0.95,
+                metalness: 0.06,
+                envMapIntensity: 0.35,
+                flatShading: true,
+                toneMapped: true
+            });
+
+            const mesh = new THREE.InstancedMesh(geometry, material, count);
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
+            mesh.frustumCulled = false;
+
+            const dummy = new THREE.Object3D();
+            const colorTint = new THREE.Color();
+
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                // 径向分布：向带中聚集，两端稀疏（模拟柯克伍德空隙的柔和感）
+                const rt = Math.pow(Math.random(), 0.7);
+                const radius = innerRadius + (outerRadius - innerRadius) * rt;
+
+                // 高度扰动：越靠外越松散
+                const verticalSpread = 2.2 + 3.6 * rt;
+                const y = ((Math.random() + Math.random() + Math.random()) - 1.5) * verticalSpread;
+
+                dummy.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+                // 随机姿态，避免所有石块朝向一致
+                dummy.rotation.set(
+                    Math.random() * Math.PI * 2,
+                    Math.random() * Math.PI * 2,
+                    Math.random() * Math.PI * 2
+                );
+                // 尺寸差异明显：大部分是小碎石，少数是大块
+                const big = Math.random() < 0.06;
+                const s = big
+                    ? 1.5 + Math.random() * 1.6
+                    : 0.45 + Math.random() * 0.85;
+                dummy.scale.set(s, s * (0.7 + Math.random() * 0.5), s);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+
+                // 颜色微差：偏灰、偏棕、偏冷
+                const tint = Math.random();
+                if (tint < 0.5) {
+                    colorTint.setRGB(0.62, 0.58, 0.54);
+                } else if (tint < 0.8) {
+                    colorTint.setRGB(0.52, 0.44, 0.38);
+                } else {
+                    colorTint.setRGB(0.56, 0.56, 0.60);
+                }
+                mesh.setColorAt(i, colorTint);
+            }
+
+            mesh.instanceMatrix.needsUpdate = true;
+            if (mesh.instanceColor) {
+                mesh.instanceColor.needsUpdate = true;
+            }
+            return mesh;
+        }
+
+        const asteroidBelt = createAsteroidBelt();
+        worldGroup.add(asteroidBelt);
+
         // 太阳拖影（使用TubeGeometry）
         sunObj.trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
         sunObj.trailLine = {
-            mesh: new THREE.Mesh(new THREE.BufferGeometry(), createTrailMaterial(0xFFCC00, 0.7)),
+            mesh: new THREE.Mesh(new THREE.BufferGeometry(), createTrailMaterial(0xFFCC00, 0.55)),
             curve: new THREE.CatmullRomCurve3([]),
             points: [],
             buffer: [],
@@ -3994,7 +4156,7 @@ Geoms: --</div>
 
         // --- 月球（地球的卫星） ---
         const moonParentPlanet = planets.find(p => p.nameEn === 'Earth');
-        const moonTrailMat = createTrailMaterial(0xcccccc, 0.8);
+        const moonTrailMat = createTrailMaterial(0xcccccc, 0.5);
         const moonTrailMesh = new THREE.Mesh(new THREE.BufferGeometry(), moonTrailMat);
         moonTrailMesh.frustumCulled = false;
         moonTrailMesh.visible = false;
@@ -4009,7 +4171,7 @@ Geoms: --</div>
             envMapIntensity: 0.4,
             toneMapped: true
         });
-        const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(0.72, 28, 28), moonMaterial);
+        const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(0.95, 32, 32), moonMaterial);
         moonMesh.castShadow = true;
         moonMesh.receiveShadow = true;
         const moonObj = {
@@ -4032,7 +4194,7 @@ Geoms: --</div>
             trailLength: Math.max(0, Math.floor(config.trailMaxPoints * 0.22)),
             angle: Math.random() * Math.PI * 2,
             baseSpeed: 0.05,
-            orbitRadius: 9.0,
+            orbitRadius: 9.6,
             parentPlanet: moonParentPlanet
         };
         worldGroup.add(moonMesh);
@@ -4074,6 +4236,7 @@ Geoms: --</div>
         const trailRefPos = new THREE.Vector3();
         const trailRelativePos = new THREE.Vector3();
         const atmSunPos = new THREE.Vector3();
+        const labelWorldTmp = new THREE.Vector3();
         const focusTempWorldPos = new THREE.Vector3();
         const focusTempCameraPos = new THREE.Vector3();
         const perfStatsEl = document.getElementById('perf-stats');
@@ -4674,22 +4837,49 @@ Geoms: --</div>
             }
         }
 
-        function syncCameraMinDistance() {
-            // 相机最小距离随目标尺寸自适应：小行星也能拉近观察表面细节
-            const planet = (typeof lockedPlanet !== 'undefined') ? lockedPlanet : null;
-            let targetSize = 2;
-            if (planet && planet.mesh && planet.mesh.geometry) {
-                const geo = planet.mesh.geometry;
-                if (!geo.boundingSphere) {
-                    geo.computeBoundingSphere();
+        // 计算天体的实际外扩半径：包含大气层壳、光环、云层等所有外层
+        function computeBodyOuterRadius(planet) {
+            if (!planet || !planet.mesh) return 2;
+
+            let bodyRadius = 2;
+            if (typeof planet.size === 'number') {
+                bodyRadius = planet.size;
+            } else if (planet.mesh.geometry) {
+                if (!planet.mesh.geometry.boundingSphere) {
+                    planet.mesh.geometry.computeBoundingSphere();
                 }
-                if (geo.boundingSphere) {
-                    targetSize = geo.boundingSphere.radius;
-                } else if (typeof planet.size === 'number') {
-                    targetSize = planet.size;
+                if (planet.mesh.geometry.boundingSphere) {
+                    bodyRadius = planet.mesh.geometry.boundingSphere.radius;
                 }
             }
-            controls.minDistance = Math.max(targetSize * 1.25, 2);
+
+            let maxRadius = bodyRadius;
+            planet.mesh.children.forEach(child => {
+                // 大气层/云层/海面高光：记录的是相对主球体的缩放倍数
+                if (child.userData && typeof child.userData.atmosphereScale === 'number') {
+                    maxRadius = Math.max(maxRadius, bodyRadius * child.userData.atmosphereScale);
+                }
+                if (child.userData && typeof child.userData.cloudScale === 'number') {
+                    maxRadius = Math.max(maxRadius, bodyRadius * child.userData.cloudScale);
+                }
+                // 光环：直接读取 RingGeometry 的外径
+                if (child.geometry && child.geometry.parameters) {
+                    const params = child.geometry.parameters;
+                    if (typeof params.outerRadius === 'number') {
+                        maxRadius = Math.max(maxRadius, params.outerRadius);
+                    }
+                }
+            });
+
+            return maxRadius;
+        }
+
+        function syncCameraMinDistance() {
+            // 最小距离 = 实际外扩半径 * 1.5：
+            // 保证相机不会钻进大气层壳或光环内部，也避免贴到低分辨率表面糊成一片
+            const planet = (typeof lockedPlanet !== 'undefined') ? lockedPlanet : null;
+            const outerRadius = computeBodyOuterRadius(planet);
+            controls.minDistance = Math.max(outerRadius * 1.5, 2.5);
         }
 
         function finishCenterSwitch(planet) {
@@ -4699,6 +4889,27 @@ Geoms: --</div>
             setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
             syncCameraMinDistance();
+            // 切换后立即埋下“起点”，让拖影从当前真实位置开始生长，
+            // 而不是等下一次采样阈值满足才出现（避免切换后短暂的空白）
+            primeTrailSeeds();
+        }
+
+        // 把每个天体的当前世界位置作为拖影的第一个采样点
+        function primeTrailSeeds() {
+            if (!lockedPlanet) return;
+            const refPos = new THREE.Vector3();
+            lockedPlanet.mesh.getWorldPosition(refPos);
+            const bodyPos = new THREE.Vector3();
+            const rel = new THREE.Vector3();
+            const nowMs = performance.now();
+
+            trailBodies.forEach(p => {
+                if (!p.trailLine || !p.trailLength) return;
+                p.mesh.getWorldPosition(bodyPos);
+                rel.subVectors(bodyPos, refPos);
+                // 写入第一个采样，同时重置采样时间/位置，让下一帧就能续接
+                pushTrailSample(p.trailLine, rel, p.trailLength, nowMs);
+            });
         }
 
         function centerOnPlanet(planet, animate = true) {
@@ -4894,6 +5105,9 @@ Geoms: --</div>
 
                 sunObj.mesh.rotation.y += 0.002 * config.rotationScale;
 
+                // 小行星带缓慢公转（整体旋转，避免逐颗更新的开销）
+                asteroidBelt.rotation.y += 0.0004 * config.timeScale * delta * 60;
+
                 // 月球绕地球公转
                 if (moonObj && moonObj.parentPlanet) {
                     moonObj.angle += moonObj.baseSpeed * config.timeScale * delta * 60;
@@ -5016,6 +5230,18 @@ Geoms: --</div>
             if (config.showLabels && frameCount % config.labelUpdateIntervalFrames === 0) {
                 labels.forEach(label => {
                     label.lookAt(camera.position);
+                    // 标签随相机距离补偿缩放，保持大致恒定的屏幕尺寸：
+                    // 否则拉近行星时标签会膨胀到占满屏幕
+                    if (label.userData.baseScale) {
+                        const dist = camera.position.distanceTo(label.getWorldPosition(labelWorldTmp));
+                        // 以 300 世界单位为基准距离，做平方根压缩避免过度放大
+                        const factor = Math.max(0.18, Math.min(3.2, Math.sqrt(dist / 300)));
+                        label.scale.set(
+                            label.userData.baseScale.x * factor,
+                            label.userData.baseScale.y * factor,
+                            1
+                        );
+                    }
                 });
             }
 

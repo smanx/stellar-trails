@@ -156,10 +156,11 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 - **Show Performance Stats**: Show live FPS / frame time / render calls / triangles / geometries
 
 ### Quality Mode
-- **Performance** (default fallback): Lower geometry tessellation + 1024 shadow map for smoother frame pacing
-- **High**: Higher tessellation + 2048 shadow map for better visual fidelity
-- **Glossy (Bloom)**: Full cinematic post-processing chain (UnrealBloom) + enhanced deep-space background. On top of High settings, the sun, bright stars and motion trails glow
-- **Auto Quality**: On startup the app picks a mode from device capability hints (CPU cores, mobile UA, screen size, DPR). In Glossy mode it keeps monitoring average FPS and auto-downgrades to High once if the frame rate stays below ~34 FPS. Manually picking a mode in the control panel disables auto-adjustment
+- **Performance** (default fallback): Lower geometry tessellation + 1024 shadow map + 1024×512 planet textures
+- **High**: Higher tessellation + 2048 shadow map + 2048×1024 planet textures
+- **Glossy (Bloom)**: Full cinematic post-processing chain (UnrealBloom) + enhanced deep-space background, on top of High settings
+- **Auto Quality**: On startup the app picks a mode from device capability hints (CPU cores, mobile UA, screen size, DPR). In Glossy mode it keeps monitoring average FPS and auto-downgrades to High once if the frame rate stays below ~34 FPS. Manually picking a mode disables auto-adjustment
+- **Adaptive camera distance**: The minimum zoom distance follows the focused body's true outer radius (including atmosphere shells and ring systems), so you can inspect small planets closely without the camera clipping inside them
 
 ### Center Planet
 - 9 buttons corresponding to Sun and 8 planets
@@ -219,19 +220,26 @@ Each planet features unique procedurally generated textures:
 - **Neptune**: Noise pattern
 
 ### Deep-Space Background (Glossy upgrade)
-- **Nebula sky dome**: Seamlessly wrapped procedural FBM nebula (purple/magenta/cyan) with a tilted Milky-Way band and embedded unresolved star dust
+- **Nebula sky dome**: Seamlessly wrapped procedural FBM nebula (purple/magenta/cyan) with a tilted Milky-Way band. Stars are drawn only by the shader star fields, never baked into the sky texture, so they stay pin-sharp at any resolution
 - **Twinkling star fields**: ~13k shader-driven stars (cold white / warm / blue-white) with per-star phase twinkle, plus a dense band-star disc
 - **Parallax depth**: Nebula, star fields and distant galaxies shift at different rates as the camera moves, giving the sky real depth
 - **Distant spiral galaxies**: Six billboarded procedural galaxy sprites slowly rotating in the far field
 - **Meteors**: Occasional shooting stars streaking across the sky (every 5–17 s)
 - **Dynamic solar plasma**: A seamless 3D-noise FBM plasma layer flows over the static sun texture (stronger in Glossy mode)
+- **Irregular sun rays**: Seven rays of differing length, width and brightness instead of a symmetric four-point cross
 - **Solar flares**: Arc-shaped prominences occasionally erupt from the sun's limb facing the camera, then fade
 - **Ocean glints**: Earth's oceans produce a sharp specular sun highlight masked by the roughness map, while land stays matte
-- **Saturn ring halo**: A faint additive outer ring beyond the main rings
+- **Saturn ring shadow**: The rings cast shadows onto the planet's cloud tops, and a faint additive halo ring sits outside the main rings
+
+### Solar System Content
+- **Asteroid belt**: ~2,400 instanced rocks between Mars and Jupiter (radius 162–198), with radial clustering, vertical scatter, size variation and per-rock colour tint. Rotates slowly as a whole
+- **Fixed surface landmarks**: Earth carries a fixed continent so rotation is visibly readable; Jupiter keeps its Great Red Spot anchored at a fixed longitude
 
 ### Motion Trails (Glossy upgrade)
-- Trails now fade and taper along their length: bright and thick at the head (newest sample), thin and dim at the tail, giving a real sense of speed
-- Trail tube segments scale with sample count, so complex paths (like the Moon's epicycloid seen from the Sun) stay smooth instead of turning into angular polygons
+- Trails fade and taper along their length: bright and thick at the head (newest sample), thin and dim at the tail
+- Trail colours are desaturated and lifted toward the deep-space palette so they no longer glare against the black background
+- Tube segments scale with sample count, so complex paths (like the Moon's epicycloid seen from the Sun) stay smooth
+- Switching the reference centre seeds each trail immediately from its current position, avoiding a visible blank gap
 
 ### Bilingual Support
 - Automatic language detection based on browser settings
