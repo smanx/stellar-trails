@@ -232,8 +232,22 @@ Each planet features unique procedurally generated textures:
 - **Saturn ring shadow**: The rings cast shadows onto the planet's cloud tops, and a faint additive halo ring sits outside the main rings
 
 ### Solar System Content
-- **Asteroid belt**: ~2,400 instanced rocks between Mars and Jupiter (radius 162–198), with radial clustering, vertical scatter, size variation and per-rock colour tint. Rotates slowly as a whole
+- **Main asteroid belt**: ~2,400 instanced rocks between Mars and Jupiter, positioned at the real belt range **2.2–3.2 AU** (visual radius 155–177) with radial clustering, vertical scatter (inclination ~4°–7°), size variation and per-rock colour tint
+- **Jupiter Trojans**: ~840 rocks clustered at Jupiter's **L4 (leading +60°) and L5 (trailing −60°)** Lagrange points, locked to Jupiter's orbital angle so the 60° separation never drifts
 - **Fixed surface landmarks**: Earth carries a fixed continent so rotation is visibly readable; Jupiter keeps its Great Red Spot anchored at a fixed longitude
+
+### Astronomical accuracy
+All orbital and rotational data maps to real values:
+
+| Item | Handling |
+|---|---|
+| Semi-major axis (AU) | Real values (0.39 / 0.72 / 1.00 / 1.52 / 5.20 / 9.50 / 19.20 / 30.10) |
+| Visual distance | Hand-tuned non-linear compression (50→450), preserving a dense-inner / sparse-outer feel |
+| Orbital speed | Strictly inverse to the real orbital period (`speed = 0.73 / periodDays`), so relative planet arrangement is always correct |
+| Rotation speed | Strictly inverse to the real rotation period (Earth 23.934 h as reference) |
+| Axial tilt | Real values (Mercury 0.03°, Venus 177.4°, Earth 23.44°, Mars 25.19°, Jupiter 3.13°, Saturn 26.73°, Uranus 97.77°, Neptune 28.32°) |
+| Spin direction | Venus and Uranus spin retrograde |
+| Moon | Radius ratio 0.2726 (Earth × 0.2726 ≈ 0.68), orbital period 27.32 days |
 
 ### Motion Trails (Glossy upgrade)
 - Trails fade and taper along their length: bright and thick at the head (newest sample), thin and dim at the tail

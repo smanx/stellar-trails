@@ -3041,10 +3041,28 @@ Geoms: --</div>
             return presets[nameEn] || { roughness: 0.7, metalness: 0.05, emissiveIntensity: 0.04, bumpScale: 0.3, envMapIntensity: 0.5, clearcoat: 0, clearcoatRoughness: 0.5, specularIntensity: 1, roughMin: 0.55, roughMax: 0.85, tilt: 0, atmosphere: null, cloud: null };
         }
 
-        // --- 4. 行星数据（增强版） ---
+        // --- 4. 行星数据（真实天文数据 + 视觉压缩） ---
         const planets = [];
         const labels = [];
-        
+
+        // 公转速度基准：让 speed 严格与真实轨道周期成反比，
+        // 保证任意时刻行星的相对排列都符合真实太阳系。
+        //   每帧角度增量 = speed * timeScale * delta * 60
+        //   取地球为基准：ORBIT_SPEED_K = 0.002 * 365 = 0.73
+        // 于是 speed = ORBIT_SPEED_K / orbitalPeriod
+        const ORBIT_SPEED_K = 0.73;
+        function orbitSpeedFor(periodDays) {
+            return ORBIT_SPEED_K / periodDays;
+        }
+
+        // 自转速度：与真实自转周期成反比（单位：小时）
+        // 取地球 23.934h 对应基准 0.0100 rad/帧（与升级前的观感一致），
+        // 于是 baseSpin = 0.0100 * 23.934 / rotationPeriodHours
+        const SPIN_SPEED_K = 0.0100 * 23.934;
+        function spinSpeedFor(periodHours) {
+            return SPIN_SPEED_K / periodHours;
+        }
+
         // 真实天文数据（相对比例）
         const planetsData = [
             {
@@ -3052,13 +3070,16 @@ Geoms: --</div>
                 nameEn: "Mercury",
                 size: 1.5,
                 distance: 50,
-                speed: 0.008,
+                speed: orbitSpeedFor(88),
                 color: 0xAAAAAA,
                 secondaryColor: 0x888888,
                 emissive: 0x222222,
                 realDistance: 0.39,
                 realSize: 0.38,
                 orbitalPeriod: 88,
+                axialTiltDeg: 0.03,
+                rotationPeriodHours: 1407.6,
+                retrogradeSpin: false,
                 texturePattern: 'craters',
                 description: '太阳系最小的行星，表面布满陨石坑'
             },
@@ -3067,13 +3088,16 @@ Geoms: --</div>
                 nameEn: "Venus",
                 size: 2.2,
                 distance: 80,
-                speed: 0.003,
+                speed: orbitSpeedFor(225),
                 color: 0xE3BB76,
                 secondaryColor: 0xD4A84A,
                 emissive: 0x332211,
                 realDistance: 0.72,
                 realSize: 0.95,
                 orbitalPeriod: 225,
+                axialTiltDeg: 177.4,
+                rotationPeriodHours: 5832.5,
+                retrogradeSpin: true,
                 texturePattern: 'noise',
                 description: '太阳系最热的行星，表面温度可达460°C'
             },
@@ -3082,13 +3106,16 @@ Geoms: --</div>
                 nameEn: "Earth",
                 size: 2.5,
                 distance: 110,
-                speed: 0.002,
+                speed: orbitSpeedFor(365),
                 color: 0x2233FF,
                 secondaryColor: 0x228822,
                 emissive: 0x001122,
                 realDistance: 1.0,
                 realSize: 1.0,
                 orbitalPeriod: 365,
+                axialTiltDeg: 23.44,
+                rotationPeriodHours: 23.934,
+                retrogradeSpin: false,
                 hasMoon: true,
                 texturePattern: 'continents',
                 description: '我们的家园，唯一已知存在生命的行星'
@@ -3098,13 +3125,16 @@ Geoms: --</div>
                 nameEn: "Mars",
                 size: 1.8,
                 distance: 140,
-                speed: 0.0016,
+                speed: orbitSpeedFor(687),
                 color: 0xFF4500,
                 secondaryColor: 0xCC3300,
                 emissive: 0x331100,
                 realDistance: 1.52,
                 realSize: 0.53,
                 orbitalPeriod: 687,
+                axialTiltDeg: 25.19,
+                rotationPeriodHours: 24.623,
+                retrogradeSpin: false,
                 texturePattern: 'craters',
                 description: '红色星球，表面有巨大的火山和峡谷'
             },
@@ -3113,13 +3143,16 @@ Geoms: --</div>
                 nameEn: "Jupiter",
                 size: 8.0,
                 distance: 220,
-                speed: 0.0008,
+                speed: orbitSpeedFor(4333),
                 color: 0xD39C7E,
                 secondaryColor: 0xC4906E,
                 emissive: 0x332211,
                 realDistance: 5.2,
                 realSize: 11.2,
                 orbitalPeriod: 4333,
+                axialTiltDeg: 3.13,
+                rotationPeriodHours: 9.925,
+                retrogradeSpin: false,
                 texturePattern: 'storms',
                 description: '太阳系最大的行星，拥有著名的大红斑'
             },
@@ -3128,13 +3161,16 @@ Geoms: --</div>
                 nameEn: "Saturn",
                 size: 7.0,
                 distance: 300,
-                speed: 0.0006,
+                speed: orbitSpeedFor(10759),
                 color: 0xF4D03F,
                 secondaryColor: 0xE4C02F,
                 emissive: 0x332200,
                 realDistance: 9.5,
                 realSize: 9.45,
                 orbitalPeriod: 10759,
+                axialTiltDeg: 26.73,
+                rotationPeriodHours: 10.656,
+                retrogradeSpin: false,
                 hasRings: true,
                 texturePattern: 'bands',
                 description: '拥有最美丽的行星环系统'
@@ -3144,13 +3180,16 @@ Geoms: --</div>
                 nameEn: "Uranus",
                 size: 4.5,
                 distance: 380,
-                speed: 0.0004,
+                speed: orbitSpeedFor(30687),
                 color: 0x4FD8EB,
                 secondaryColor: 0x3FC8DB,
                 emissive: 0x002233,
                 realDistance: 19.2,
                 realSize: 4.0,
                 orbitalPeriod: 30687,
+                axialTiltDeg: 97.77,
+                rotationPeriodHours: 17.24,
+                retrogradeSpin: true,
                 texturePattern: 'noise',
                 description: '侧躺着旋转的冰巨星'
             },
@@ -3159,13 +3198,16 @@ Geoms: --</div>
                 nameEn: "Neptune",
                 size: 4.3,
                 distance: 450,
-                speed: 0.0003,
+                speed: orbitSpeedFor(60190),
                 color: 0x4169E1,
                 secondaryColor: 0x3159D1,
                 emissive: 0x001133,
                 realDistance: 30.1,
                 realSize: 3.88,
                 orbitalPeriod: 60190,
+                axialTiltDeg: 28.32,
+                rotationPeriodHours: 16.11,
+                retrogradeSpin: false,
                 texturePattern: 'noise',
                 description: '太阳系最远的行星，拥有强烈的风暴'
             }
@@ -3916,10 +3958,14 @@ Geoms: --</div>
             mesh.castShadow = true;
             mesh.receiveShadow = true;
 
-            // 自转轴倾角（真实天文数据，弧度）
-            if (visualPreset.tilt) {
-                mesh.rotation.z = visualPreset.tilt;
+            // 自转轴倾角：直接使用数据表中的真实值（度 → 弧度）
+            // 金星 177.4° 与天王星 97.77° 因此会呈现真实的“倒转”与“侧躺”
+            if (typeof data.axialTiltDeg === 'number') {
+                mesh.rotation.z = data.axialTiltDeg * Math.PI / 180;
             }
+
+            // 自转方向：金星与天王星为逆行自转
+            const spinDirection = data.retrogradeSpin ? -1 : 1;
 
             // 大气层（部分行星）- 菲涅尔边缘辉光 + 外层光晕
             const atmosphereUniforms = [];
@@ -4052,6 +4098,8 @@ Geoms: --</div>
                 cloudLayer,
                 textures: planetTextures,
                 oceanGlintUniforms,
+                spinDirection,
+                baseSpin: spinSpeedFor(data.rotationPeriodHours),
                 trailLine,
                 trailPoints: [],
                 trailLength: trailLength,
@@ -4062,13 +4110,22 @@ Geoms: --</div>
             worldGroup.add(mesh);
         });
 
-        // === 小行星带 ===
-        // 位于火星(140)与木星(220)之间，用 InstancedMesh 保证性能。
-        // 带内做径向/高度/倾角扰动，避免看起来像一个规整的圆环。
+        // === 主小行星带 ===
+        // 真实主带位于 2.2–3.2 AU，即火星(1.52 AU)与木星(5.2 AU)之间。
+        // 视觉距离由火星(140)到木星(220)的映射反推：
+        //   AU = 1.52 + (d - 140) * (5.2 - 1.52) / (220 - 140)
+        //   2.2 AU → d ≈ 155 ，3.2 AU → d ≈ 177
+        // 用 InstancedMesh 保证性能；带内做径向聚集、高度散布与尺寸差异。
+        const ASTEROID_BELT = {
+            innerRadius: 155,   // 2.2 AU
+            outerRadius: 177,   // 3.2 AU
+            count: 2400
+        };
+
         function createAsteroidBelt() {
-            const count = 2400;
-            const innerRadius = 162;
-            const outerRadius = 198;
+            const count = ASTEROID_BELT.count;
+            const innerRadius = ASTEROID_BELT.innerRadius;
+            const outerRadius = ASTEROID_BELT.outerRadius;
 
             const geometry = new THREE.IcosahedronGeometry(0.34, 0);
             const material = new THREE.MeshStandardMaterial({
@@ -4090,13 +4147,15 @@ Geoms: --</div>
 
             for (let i = 0; i < count; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                // 径向分布：向带中聚集，两端稀疏（模拟柯克伍德空隙的柔和感）
+                // 径向分布：向带中部聚集，两端稀疏
                 const rt = Math.pow(Math.random(), 0.7);
                 const radius = innerRadius + (outerRadius - innerRadius) * rt;
 
-                // 高度扰动：越靠外越松散
-                const verticalSpread = 2.2 + 3.6 * rt;
-                const y = ((Math.random() + Math.random() + Math.random()) - 1.5) * verticalSpread;
+                // 高度散布：真实主带轨道倾角多在 10° 以内，取密集核心约 ±4°
+                // 再靠三随机数之和形成向外的稀疏尾部
+                const inclinationHalfAngle = 0.07 + 0.05 * rt; // 弧度，约 4°→6.9°
+                const maxHeight = radius * Math.tan(inclinationHalfAngle);
+                const y = ((Math.random() + Math.random() + Math.random()) - 1.5) / 1.5 * maxHeight;
 
                 dummy.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
                 // 随机姿态，避免所有石块朝向一致
@@ -4136,6 +4195,87 @@ Geoms: --</div>
         const asteroidBelt = createAsteroidBelt();
         worldGroup.add(asteroidBelt);
 
+        // === 木星特洛伊小行星群 ===
+        // 真实存在：聚集在木星轨道上、与木星相距约 60° 的两个区域，
+        // 即 L4（前导，木星前方）与 L5（尾随，木星后方）拉格朗日点。
+        // 这里把它们放在木星同一半径上，并按木星公转角同步旋转以保持 60° 夹角。
+        const JUPITER_TROJAN = {
+            radius: 220,        // 与木星同轨道半径
+            leadingDeg: 60,     // L4 前导
+            trailingDeg: -60,   // L5 尾随
+            perCluster: 420,
+            angularSpread: 13,  // 集群在经度方向的散布（度）
+            radialSpread: 5     // 集群在径向的散布
+        };
+
+        function createJupiterTrojans() {
+            const total = JUPITER_TROJAN.perCluster * 2;
+            const geometry = new THREE.IcosahedronGeometry(0.3, 0);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x6f6a66,
+                roughness: 0.96,
+                metalness: 0.05,
+                envMapIntensity: 0.3,
+                flatShading: true,
+                toneMapped: true
+            });
+
+            const mesh = new THREE.InstancedMesh(geometry, material, total);
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
+            mesh.frustumCulled = false;
+
+            const dummy = new THREE.Object3D();
+            const colorTint = new THREE.Color();
+            const spreadRad = JUPITER_TROJAN.angularSpread * Math.PI / 180;
+
+            let index = 0;
+            for (const clusterDeg of [JUPITER_TROJAN.leadingDeg, JUPITER_TROJAN.trailingDeg]) {
+                const centerRad = clusterDeg * Math.PI / 180;
+                for (let i = 0; i < JUPITER_TROJAN.perCluster; i++) {
+                    // 以集群中心做正态式聚集
+                    const angJitter = ((Math.random() + Math.random() + Math.random()) - 1.5) / 1.5 * spreadRad;
+                    const angle = centerRad + angJitter;
+                    const radius = JUPITER_TROJAN.radius
+                        + ((Math.random() + Math.random()) - 1) * JUPITER_TROJAN.radialSpread;
+                    // 特洛伊群倾角更大，纵向散布比主带更厚
+                    const maxHeight = radius * Math.tan(0.12);
+                    const y = ((Math.random() + Math.random() + Math.random()) - 1.5) / 1.5 * maxHeight;
+
+                    dummy.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+                    dummy.rotation.set(
+                        Math.random() * Math.PI * 2,
+                        Math.random() * Math.PI * 2,
+                        Math.random() * Math.PI * 2
+                    );
+                    const s = 0.7 + Math.random() * 1.3;
+                    dummy.scale.set(s, s * (0.7 + Math.random() * 0.5), s);
+                    dummy.updateMatrix();
+                    mesh.setMatrixAt(index, dummy.matrix);
+
+                    const tint = Math.random();
+                    if (tint < 0.5) {
+                        colorTint.setRGB(0.44, 0.42, 0.40);
+                    } else if (tint < 0.8) {
+                        colorTint.setRGB(0.38, 0.33, 0.30);
+                    } else {
+                        colorTint.setRGB(0.42, 0.42, 0.45);
+                    }
+                    mesh.setColorAt(index, colorTint);
+                    index++;
+                }
+            }
+
+            mesh.instanceMatrix.needsUpdate = true;
+            if (mesh.instanceColor) {
+                mesh.instanceColor.needsUpdate = true;
+            }
+            return mesh;
+        }
+
+        const jupiterTrojans = createJupiterTrojans();
+        worldGroup.add(jupiterTrojans);
+
         // 太阳拖影（使用TubeGeometry）
         sunObj.trailLength = Math.max(0, Math.floor(config.trailMaxPoints));
         sunObj.trailLine = {
@@ -4171,7 +4311,9 @@ Geoms: --</div>
             envMapIntensity: 0.4,
             toneMapped: true
         });
-        const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(0.95, 32, 32), moonMaterial);
+        // 月球真实半径比：地球半径 2.5 × 0.2726 ≈ 0.68
+        const MOON_RADIUS = 0.68;
+        const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(MOON_RADIUS, 32, 32), moonMaterial);
         moonMesh.castShadow = true;
         moonMesh.receiveShadow = true;
         const moonObj = {
@@ -4193,7 +4335,7 @@ Geoms: --</div>
             trailPoints: [],
             trailLength: Math.max(0, Math.floor(config.trailMaxPoints * 0.22)),
             angle: Math.random() * Math.PI * 2,
-            baseSpeed: 0.05,
+            baseSpeed: orbitSpeedFor(27.32),   // 月球真实公转周期 27.32 天
             orbitRadius: 9.6,
             parentPlanet: moonParentPlanet
         };
@@ -5093,20 +5235,34 @@ Geoms: --</div>
 
             if (!config.isPaused) {
                 planets.forEach(p => {
+                    // 公转：角度增量由真实轨道周期推导（见 ORBIT_SPEED_K）
                     p.angle += p.baseSpeed * config.timeScale * delta * 60;
                     p.mesh.position.x = Math.cos(p.angle) * p.distance;
                     p.mesh.position.z = Math.sin(p.angle) * p.distance;
-                    p.mesh.rotation.y += 0.01 * config.rotationScale;
+
+                    // 自转：速度由真实自转周期推导，金星/天王星为逆行
+                    const spin = p.spinDirection * p.baseSpin * config.rotationScale * delta * 60;
+                    p.mesh.rotation.y += spin;
 
                     if (p.cloudLayer) {
-                        p.cloudLayer.rotation.y += 0.003 * config.rotationScale;
+                        p.cloudLayer.rotation.y += spin * 1.18;
                     }
                 });
 
                 sunObj.mesh.rotation.y += 0.002 * config.rotationScale;
 
-                // 小行星带缓慢公转（整体旋转，避免逐颗更新的开销）
-                asteroidBelt.rotation.y += 0.0004 * config.timeScale * delta * 60;
+                // 主带整体公转：按开普勒第三定律，带中部约 2.7 AU 处周期约 1619 天
+                // （P = 365 × 2.7^1.5 ≈ 1619），故角速度 = ORBIT_SPEED_K / 1619
+                asteroidBelt.rotation.y += orbitSpeedFor(1619) * config.timeScale * delta * 60;
+
+                // 木星特洛伊群：必须与木星严格同步公转，
+                // 否则 L4/L5 与木星的 60° 夹角会随时间漂移。
+                // 注意符号：Three.js 绕 Y 轴旋转 φ 时，局部角 θ 的点世界角为 θ − φ，
+                // 因此要得到 φ ± 60° 必须旋转 −φ。
+                const jupiterObj = planetByNameEn.get('Jupiter');
+                if (jupiterObj) {
+                    jupiterTrojans.rotation.y = -jupiterObj.angle;
+                }
 
                 // 月球绕地球公转
                 if (moonObj && moonObj.parentPlanet) {
