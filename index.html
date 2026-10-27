@@ -4701,29 +4701,24 @@ Geoms: --</div>
                 }
 
                 // 回推时长：太阳参考系下按「该天体绕 ref 转过 maxOrbits 圈」取；
-                // 其他参考系按时间均匀采样。
+                // 其他参考系按相对角速度换算（相对轨迹是玫瑰线，按时间均匀采样）
                 let durationSec;
                 if (refIsSun) {
                     const omegaEff = Math.abs(omega);
                     durationSec = omegaEff > 1e-9 ? (Math.PI * 2 * maxOrbits) / omegaEff : 0;
                 } else {
-                    // 相对角速度（玫瑰线）：取目标与参考的角速度差
-                    const relOmega = isMoon ? (omega + earthOmega - refOmega + earthOmega) : (omega - refOmega);
-                    // 月球作目标时世界角 = 地球角 + 本征角 → dω = ω_moon + ω_earth − ω_ref
                     const eff = isMoon
                         ? Math.abs(omega + earthOmega - refOmega)
                         : Math.abs(omega - refOmega);
                     durationSec = eff > 1e-9 ? (Math.PI * 2 * maxOrbits) / eff : 0;
                 }
 
-                // 步数：太阳参考系按弧长步长换算；其他参考系取 min(maxPoints, 512)
-                let steps;
-                if (refIsSun) {
-                    const dTheta = radius > 0 ? TRAIL_ARC_STEP / radius : Math.PI * 2;
-                    steps = Math.min(maxPoints, Math.max(2, Math.ceil((Math.PI * 2 * maxOrbits) / Math.max(dTheta, 1e-4))));
-                } else {
-                    steps = Math.min(maxPoints, 512);
-                }
+                // 步数：与实时采样保持一致 —— 每圈「周长 / TRAIL_ARC_STEP」个点。
+                // 旧实现给非太阳参考系封了 512 上限，导致预填段点距是实时段的
+                // 数倍，交界处密度突变，外行星整环呈现虚线状。
+                const circumference = Math.PI * 2 * radius;
+                const pointsPerOrbit = circumference / TRAIL_ARC_STEP;
+                const steps = Math.min(maxPoints, Math.max(2, Math.round(pointsPerOrbit * maxOrbits)));
                 if (steps < 2) {
                     tl.count = 0;
                     return;
@@ -4893,6 +4888,14 @@ Geoms: --</div>
                 }
             }
             trailLine.curve.points = trailLine.points;
+            // 弧长表的分辨率必须覆盖每个采样点：默认 200 份对于 2000+ 点的
+            // 外行星拖影严重不足，getPointAt 的映射会跳过大量点，
+            // 圆环渲染成虚线。设为「每 2 个采样点一份」，并让 needsUpdate 生效。
+            const want = Math.max(200, count * 2);
+            if (trailLine.curve.arcLengthDivisions !== want) {
+                trailLine.curve.arcLengthDivisions = want;
+            }
+            trailLine.curve.needsUpdate = true;
             trailLine.curve.updateArcLengths();
         }
 
@@ -5611,9 +5614,13 @@ Geoms: --</div>
                         if (trailLine.count >= 2) {
                             syncTrailPointsFromBuffer(trailLine);
                             trailLine.mesh.geometry.dispose();
-                            // 分段数随采样点增长：拖影点越多（尤其月球相对太阳的外摆线），
-                            // 曲线越复杂，固定 64 段会让环变成棱角多边形
-                            const tubularSegments = Math.max(2, Math.min(220, trailLine.points.length));
+                            // 分段数必须覆盖到每个采样点：外行星一圈 2000+ 点，
+                            // 若管道只取 220 段，插值会跳过大量控制点，
+                            // 圆环在大半径下呈现虚线状锯齿。
+                            // 上限 2400：1 圈的海王星 2356 点全保留；2 圈时点距
+                            // 加倍仍有足够密度。三角形数 = 2400×8×2 ≈ 3.8 万/条，
+                            // 仅外行星达到上限，内行星点数少、自然更省。
+                            const tubularSegments = Math.max(2, Math.min(2400, trailLine.points.length));
                             trailLine.mesh.geometry = createTrailGeometry(
                                 trailLine.curve,
                                 tubularSegments,
