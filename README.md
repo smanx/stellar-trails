@@ -256,13 +256,10 @@ All orbital and rotational data maps to real values:
 
 ### Motion Trails (Glossy upgrade)
 - Trail length is measured in **orbits**, not points: the slider sets how many full loops each body keeps relative to the current reference frame (0–2, default 1.0)
-- Trails are **pre-filled analytically**: since every orbit is circular motion with a linear-in-time angle, the past N loops can be computed exactly at the moment you change the setting or switch the reference frame. Saturn/Neptune show a complete ring instantly (previously you had to wait ~10–143 real minutes at 1x for the buffer to fill)
-- Every body samples its own path at a fixed arc-length step, so a body's point count is proportional to its orbital circumference (Neptune keeps ~2.4k points per orbit, the Moon ~50), while the **number of preserved loops is identical for all bodies**
-- Arc-length sampling also means trails fill in uniformly at any time speed — outer planets no longer need ages to accumulate a full ring
-- Trails fade and taper along their length: bright and thick at the head (newest sample), thin and dim at the tail
-- Trail colours are desaturated and lifted toward the deep-space palette so they no longer glare against the black background
-- Tube segments scale with sample count, so complex paths (like the Moon's epicycloid seen from the Sun) stay smooth
-- Switching the reference centre seeds each trail immediately from its current position, avoiding a visible blank gap
+- Trails **grow as the body moves**: on load / after switching the reference frame each trail starts empty and stretches over ~22 real seconds (growth pace is the same for every body, so outer planets don't wait), capped by how far the body has actually travelled
+- **Particle stream**: a chain of additive glow sprites rides the analytic path behind every body — older particles shrink, dim and twinkle, then fade out at the tail; a translucent orbit band underneath ties the stream together
+- The band and particles are recomputed every frame straight from the orbital equations (circular orbits for the Sun-centred frame, exact rose curves for planet-centred frames) — no sampling buffers, no history, always exact
+- Trail colours keep per-planet identity (Saturn yellow, Earth blue, Mars red, Neptune cyan)
 
 ### Bilingual Support
 - Automatic language detection based on browser settings

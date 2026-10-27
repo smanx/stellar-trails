@@ -3907,13 +3907,15 @@ Geoms: --</div>
             uniform float uOpacity;
             varying float vT;
             void main() {
-                // 三段式渐变：
-                //   尾部余辉（vT < 0.5）：缓慢衰减，保持整圈可辨
-                //   中段过渡：均匀的轨道亮度
-                //   头部光锥（最后 35%，紧跟天体）：快速提亮 + 混白，速度感
+                // 彗尾式三段：
+                //   尾端（vT→0）：指数渐隐到 0 —— 「最后面慢慢消失」
+                //   中段：余辉，均匀保持
+                //   头部（最后 35%）：快速提亮 + 混白 —— 紧跟天体的光锥
                 float glow = smoothstep(0.55, 1.0, vT);
-                float tail = mix(0.50, 0.95, smoothstep(0.0, 0.55, vT));
-                float a = tail * uOpacity * (1.0 + glow * 1.9);
+                // 尾端 25% 内指数衰减到 0，其余维持余辉水平
+                float tailFade = smoothstep(0.0, 0.25, vT);
+                float body = mix(0.50, 0.92, smoothstep(0.25, 0.55, vT));
+                float a = body * tailFade * uOpacity * (1.0 + glow * 1.9);
                 vec3 col = mix(uColor * 0.95, mix(uColor, vec3(1.0), 0.42), glow);
                 gl_FragColor = vec4(col, min(a, 1.0));
             }
@@ -3991,23 +3993,71 @@ Geoms: --</div>
         const _tbBinormal = new THREE.Vector3();
         const _tbN = new THREE.Vector3();
         const _tbUp = new THREE.Vector3(0, 1, 0);
+
+        // === 拖尾粒子光斑层 ===
+        // 在条带之上叠加一串跟随解析轨迹的光斑 sprite：越老越小、越透明、
+        // 伴随闪烁。bloom 下形成发亮的粒子尾，比单纯管道更有「特效感」。
+        const TRAIL_PARTICLE_COUNT = 36;
+
+        function createTrailParticles(colorHex) {
+            const group = new THREE.Group();
+            const particles = [];
+            const base = new THREE.Color(colorHex);
+            const tex = getTrailParticleTexture();
+            for (let i = 0; i < TRAIL_PARTICLE_COUNT; i++) {
+                const size = 8 + Math.random() * 6;
+                const mat = new THREE.SpriteMaterial({
+                    map: tex,
+                    color: base.clone(),
+                    transparent: true,
+                    opacity: 0,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    toneMapped: false
+                });
+                const sp = new THREE.Sprite(mat);
+                sp.scale.setScalar(size);
+                sp.userData = { index: i, baseSize: size, phase: Math.random() * Math.PI * 2 };
+                group.add(sp);
+                particles.push(sp);
+            }
+            group.frustumCulled = false;
+            group.visible = false;
+            return { group, particles };
+        }
+
+        // 共享光斑纹理：径向渐变亮点
+        let _trailParticleTexture = null;
+        function getTrailParticleTexture() {
+            if (_trailParticleTexture) return _trailParticleTexture;
+            const s = 64;
+            const canvas = document.createElement('canvas');
+            canvas.width = s; canvas.height = s;
+            const ctx = canvas.getContext('2d');
+            const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.25, 'rgba(255,255,255,0.85)');
+            g.addColorStop(0.55, 'rgba(255,255,255,0.30)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, s, s);
+            _trailParticleTexture = new THREE.CanvasTexture(canvas);
+            _trailParticleTexture.colorSpace = THREE.SRGBColorSpace;
+            return _trailParticleTexture;
+        }
         // 每帧重算一个天体的条带顶点（时间回推采样）。
         // bodyDesc 描述目标天体与参考中心的解析轨道，每帧调用。任何参考系下
         // 每个条带顶点都是真实轨迹上的点（P_body(τ) − P_ref(τ)），不是近似圆。
-        // bodyDesc: { radius, angle0, omega, isMoon, moonRadius, moonAngle0, moonOmega,
-        //             earthRadius, earthAngle0, earthOmega,
-        //             refRadius, refAngle0, refOmega, refIsSun, refIsMoon,
-        //             refMoonRadius, refMoonAngle0, refMoonOmega }
-        // spanOrbits: 覆盖圈数（按目标天体相对参考中心的角速度折算成时间）
-        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius) {
+        // ageSec：拖尾已积累的模拟时间 @1x。可见尾部跨度 = min(已走角度, 圈数)，
+        // 未走过的部分塌缩到头部并隐藏 —— 拖尾随运动「慢慢生成」。
+        // spanOrbits: 覆盖圈数上限
+        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius, ageSec) {
             const geo = mesh.geometry;
             const posAttr = geo.attributes.position;
             const arr = posAttr.array;
             const segs = TRAIL_MAX_SEGMENTS;
             const radial = 8;
             const rowLength = radial + 1;
-
-            const usedSegs = Math.max(2, Math.round(TRAIL_SEGMENTS_PER_ORBIT * spanOrbits));
 
             // 相对角速度（玫瑰线频率）：目标与参考的角速度之差。
             // 月球世界角速度 = 地球角速度 + 本征角速度。
@@ -4018,9 +4068,30 @@ Geoms: --</div>
                     ? (bodyDesc.omega + bodyDesc.earthOmega - bodyDesc.refOmega)
                     : (bodyDesc.omega - bodyDesc.refOmega);
             }
-            // 回推总时长：相对相位转过 spanOrbits 圈
             const absRel = Math.abs(relOmega);
-            const durationSec = absRel > 1e-12 ? (Math.PI * 2 * spanOrbits) / absRel : 0;
+            if (absRel < 1e-12) {
+                // 相对静止（如太阳中心看自己）：无可回溯轨迹
+                posAttr.needsUpdate = true;
+                return;
+            }
+
+            // 圈数上限对应的回推时长（模拟秒 @1x）
+            const maxSpanSec = (Math.PI * 2 * spanOrbits) / absRel;
+            // 可见跨度取两个限制的较小值：
+            //   sim ：行星实际走过的模拟时长（低速时拖尾不超前于运动）
+            //   grow：生长动画进度（真实秒内匀速长满，外行星不用干等）
+            const simWalkedSec = Math.max(0, (ageSec && ageSec.sim) || 0);
+            const grow01 = Math.min(1, ((ageSec && ageSec.real) || 0) / TRAIL_GROW_SECONDS);
+            const visibleSec = Math.min(maxSpanSec, simWalkedSec, maxSpanSec * grow01);
+            if (visibleSec < 0.05) {
+                // 刚启动：整条隐藏
+                posAttr.needsUpdate = true;
+                return;
+            }
+            const durationSec = visibleSec;
+
+            // 可见段数按「可见时长 / 上限」分配（其余段塌缩隐藏）
+            const usedSegs = Math.max(2, Math.min(segs, Math.ceil(segs * visibleSec / maxSpanSec)));
 
             for (let i = 0; i <= usedSegs; i++) {
                 const t = i / usedSegs;                       // 0 = 尾（最老），1 = 头
@@ -4115,19 +4186,99 @@ Geoms: --</div>
                 }
             }
 
-            // 未使用的段缩到 0（放到头部位置），避免渲染垃圾
+            // 未使用的段塌缩到头部并置 aT=0（透明），避免渲染垃圾
             if (usedSegs < segs) {
+                const tAttr = geo.attributes.aT;
                 const hx = arr[(usedSegs * rowLength) * 3];
                 const hz = arr[(usedSegs * rowLength) * 3 + 2];
                 for (let i = usedSegs + 1; i <= segs; i++) {
                     for (let j = 0; j <= radial; j++) {
-                        const idx = (i * rowLength + j) * 3;
-                        arr[idx] = hx; arr[idx + 1] = 0; arr[idx + 2] = hz;
+                        const idx = (i * rowLength + j);
+                        arr[idx * 3] = hx; arr[idx * 3 + 1] = 0; arr[idx * 3 + 2] = hz;
+                        tAttr.array[idx] = 0;
                     }
                 }
+                tAttr.needsUpdate = true;
             }
 
             posAttr.needsUpdate = true;
+        }
+
+        // 每帧更新一个天体的拖尾粒子光斑。
+        // 粒子 i 代表轨迹上「天体身后第 i 段」的采样点：按解析方程回推，
+        // 越老越小、越透明、伴随闪烁。可见数量受拖尾年龄（生长）限制。
+        function updateTrailParticles(p, bodyDesc, spanOrbits, nowMs) {
+            const tp = p.trailParticles;
+            if (!tp) return;
+
+            // 相对角速度（与 updateTrailBand 相同的推导）
+            let relOmega = bodyDesc.omega;
+            if (bodyDesc.isMoon) relOmega += bodyDesc.earthOmega;
+            if (!bodyDesc.refIsSun) {
+                relOmega = bodyDesc.isMoon
+                    ? (bodyDesc.omega + bodyDesc.earthOmega - bodyDesc.refOmega)
+                    : (bodyDesc.omega - bodyDesc.refOmega);
+            }
+            const absRel = Math.abs(relOmega);
+            const age = trailAge.get(p) || { real: 0, sim: 0 };
+            const maxSpanSec = absRel > 1e-12 ? (Math.PI * 2 * spanOrbits) / absRel : 0;
+            const simWalkedSec = age.sim || 0;
+            const grow01 = Math.min(1, (age.real || 0) / TRAIL_GROW_SECONDS);
+            const visibleSec = Math.min(maxSpanSec, simWalkedSec, maxSpanSec * grow01);
+
+            const world = tp.group;
+
+            if (visibleSec < 0.2) {
+                world.visible = false;
+                return;
+            }
+            world.visible = true;
+
+            // 天体当前位置（世界系）作为粒子流的头部锚点
+            const headWX = worldGroup.position.x + p.mesh.position.x;
+            const headWZ = worldGroup.position.z + p.mesh.position.z;
+
+            for (let i = 0; i < TRAIL_PARTICLE_COUNT; i++) {
+                const sp = tp.particles[i];
+                const d = sp.userData;
+                // t: 0 = 尾（最老），1 = 头（天体）
+                const t = 1 - (i + 0.5) / TRAIL_PARTICLE_COUNT;
+                const tau = (1 - t) * visibleSec;
+
+                let wx, wz;
+                if (bodyDesc.isMoon) {
+                    const ea = bodyDesc.earthAngle0 - bodyDesc.earthOmega * tau;
+                    const ma = bodyDesc.moonAngle0 - bodyDesc.moonOmega * tau;
+                    wx = Math.cos(ea) * bodyDesc.earthRadius + Math.cos(ma) * bodyDesc.moonRadius;
+                    wz = Math.sin(ea) * bodyDesc.earthRadius + Math.sin(ma) * bodyDesc.moonRadius;
+                } else {
+                    const a = bodyDesc.angle0 - bodyDesc.omega * tau;
+                    wx = Math.cos(a) * bodyDesc.radius;
+                    wz = Math.sin(a) * bodyDesc.radius;
+                }
+                if (!bodyDesc.refIsSun) {
+                    if (bodyDesc.refIsMoon) {
+                        const ea = bodyDesc.refEarthAngle0 - bodyDesc.refEarthOmega * tau;
+                        const ma = bodyDesc.refMoonAngle0 - bodyDesc.refMoonOmega * tau;
+                        wx -= Math.cos(ea) * bodyDesc.refEarthRadius + Math.cos(ma) * bodyDesc.refMoonRadius;
+                        wz -= Math.sin(ea) * bodyDesc.refEarthRadius + Math.sin(ma) * bodyDesc.refMoonRadius;
+                    } else {
+                        const a = bodyDesc.refAngle0 - bodyDesc.refOmega * tau;
+                        wx -= Math.cos(a) * bodyDesc.refRadius;
+                        wz -= Math.sin(a) * bodyDesc.refRadius;
+                    }
+                }
+
+                sp.position.set(wx, 0, wz);
+
+                // 越老越小、越透明；个体相位闪烁
+                const twinkle = 0.75 + 0.25 * Math.sin(nowMs * 0.004 + d.phase);
+                const sizeT = (0.25 + 0.75 * t) * twinkle;
+                sp.scale.setScalar(d.baseSize * sizeT);
+                // 头部粒子最亮（叠加光锥），尾部渐隐到 0
+                const alpha = Math.pow(t, 1.4) * 0.85 * twinkle;
+                sp.material.opacity = alpha;
+            }
         }
 
 
@@ -4277,11 +4428,13 @@ Geoms: --</div>
             }
 
 // 初始化拖影条带（解析轨道，见 createTrailBand）
-            const trailMesh = createTrailBand(data.color, 0.78);
+            const trailMesh = createTrailBand(data.color, 0.40);
             trailMesh.visible = false;
             scene.add(trailMesh);
 
             const trailLine = { mesh: trailMesh, visible: false };
+            const trailParticles = createTrailParticles(data.color);
+            scene.add(trailParticles.group);
 
             // 创建标签
             const label = createLabel(data, new THREE.Vector3(0, data.size + 5, 0));
@@ -4297,6 +4450,7 @@ Geoms: --</div>
                 spinDirection,
                 baseSpin: spinSpeedFor(data.rotationPeriodHours),
                 trailLine,
+                trailParticles,
                 angle: Math.random() * Math.PI * 2,
                 baseSpeed: data.speed
             };
@@ -4472,9 +4626,11 @@ Geoms: --</div>
 
         // 太阳拖影（解析条带；太阳相对自己静止，条带只在天体本身绕其他
         // 参考中心运动时才有意义，这里保留统一结构）
-        sunObj.trailLine = { mesh: createTrailBand(0xFFCC00, 0.68), visible: false };
+        sunObj.trailLine = { mesh: createTrailBand(0xFFCC00, 0.36), visible: false };
         sunObj.trailLine.mesh.visible = false;
         scene.add(sunObj.trailLine.mesh);
+        sunObj.trailParticles = createTrailParticles(0xFFCC00);
+        scene.add(sunObj.trailParticles.group);
 
         // --- 月球（地球的卫星） ---
         const moonParentPlanet = planets.find(p => p.nameEn === 'Earth');
@@ -4497,7 +4653,8 @@ Geoms: --</div>
             name: '月球',
             nameEn: 'Moon',
             mesh: moonMesh,
-            trailLine: { mesh: createTrailBand(0xcccccc, 0.62), visible: false },
+            trailLine: { mesh: createTrailBand(0xcccccc, 0.34), visible: false },
+            trailParticles: createTrailParticles(0xcccccc),
             angle: Math.random() * Math.PI * 2,
             baseSpeed: orbitSpeedFor(27.32),   // 月球真实公转周期 27.32 天
             orbitRadius: 9.6,
@@ -4505,6 +4662,7 @@ Geoms: --</div>
         };
         moonObj.trailLine.mesh.visible = false;
         scene.add(moonObj.trailLine.mesh);
+        scene.add(moonObj.trailParticles.group);
         worldGroup.add(moonMesh);
 
         const trailBodies = [...planets, sunObj, moonObj];
@@ -4704,11 +4862,33 @@ Geoms: --</div>
             }
         }
 
+        // === 拖尾生命周期 ===
+        // ageSec：拖尾已积累的「真实秒数」（暂停时不增长，切参考中心清零）。
+        // 生长速度与行星无关：任何天体都在 TRAIL_GROW_SECONDS 内长满自己的
+        // 圈数上限 —— 外行星不用像旧「按模拟时间」方案那样干等上百分钟。
+        // 暂停时拖尾冻结（不再生长也不消散），恢复后继续。
+        const TRAIL_GROW_SECONDS = 22;
+
+        const trailAge = new Map();   // body -> { real: 真实秒, sim: 模拟秒 @1x }
+
+        function advanceTrailAge(deltaRealSec, deltaSimSec) {
+            trailBodies.forEach(p => {
+                const a = trailAge.get(p) || { real: 0, sim: 0 };
+                a.real += deltaRealSec;
+                a.sim += deltaSimSec;
+                trailAge.set(p, a);
+            });
+        }
+
+        function resetTrailAge() {
+            trailBodies.forEach(p => trailAge.set(p, { real: 0, sim: 0 }));
+        }
+
         // === 拖影圈数应用 ===
         // 条带几何一次性建满最大段数，圈数只影响每帧重算时覆盖的角度跨度，
         // 因此应用圈数不需要重建几何，也不需要清任何缓冲 —— 下一帧直接生效。
         function applyTrailOrbits() {
-            // 圈数变化即时生效（updateTrailBands 每帧读取 config.trailOrbits）
+            // 圈数上限变化即时生效；拖尾年龄保留（已走过的路仍在，只是显示上限变了）
         }
 
         function setTrailMeshVisible(trailLine, visible) {
@@ -5125,8 +5305,9 @@ Geoms: --</div>
             setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
             syncCameraMinDistance();
-            // 拖影是解析条带，切换参考中心后下一帧即按新参考系重算，
-            // 无需任何缓冲清理或历史预填
+            // 相对轨迹随参考系改变，旧拖尾对新参考系无效 —— 年龄清零，
+            // 拖尾在新参考系下随运动重新生成
+            resetTrailAge();
         }
 
         function centerOnPlanet(planet, animate = true) {
@@ -5309,6 +5490,11 @@ Geoms: --</div>
             }
 
             if (!config.isPaused) {
+                // 拖尾年龄双轨记录：
+                //   real：真实秒 —— 驱动生长动画（所有天体同速长满，外行星不用干等）
+                //   sim ：模拟秒 —— 行星实际走过的路（低速时拖尾不会超前于运动）
+                advanceTrailAge(delta, delta * config.timeScale);
+
                 planets.forEach(p => {
                     // 公转：角度增量由真实轨道周期推导（见 ORBIT_SPEED_K）
                     p.angle += p.baseSpeed * config.timeScale * delta * 60;
@@ -5445,13 +5631,17 @@ Geoms: --</div>
                         refMoonOmega: refIsMoon ? (lockedPlanet.baseSpeed || 0) * 60 : 0
                     };
 
-                    updateTrailBand(tl.mesh, desc, spanOrbits, thickness);
+                    updateTrailBand(tl.mesh, desc, spanOrbits, thickness, trailAge.get(p) || 0);
                     setTrailMeshVisible(tl, true);
+                    updateTrailParticles(p, desc, spanOrbits, nowMs);
                 });
             } else {
                 trailBodies.forEach(p => {
                     if (p.trailLine && p.trailLine.mesh) {
                         setTrailMeshVisible(p.trailLine, false);
+                    }
+                    if (p.trailParticles) {
+                        p.trailParticles.group.visible = false;
                     }
                 });
             }
