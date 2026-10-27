@@ -254,12 +254,15 @@ All orbital and rotational data maps to real values:
 | Spin direction | Venus and Uranus spin retrograde |
 | Moon | Radius ratio 0.2726 (Earth × 0.2726 ≈ 0.68), orbital period 27.32 days |
 
-### Motion Trails (Glossy upgrade)
-- Trail length is measured in **orbits**, not points: the slider sets how many full loops each body keeps relative to the current reference frame (0–2, default 1.0)
-- Trails **grow as the body moves**: on load / after switching the reference frame each trail starts empty and stretches over ~22 real seconds (growth pace is the same for every body, so outer planets don't wait), capped by how far the body has actually travelled
-- **Particle stream**: a chain of additive glow sprites rides the analytic path behind every body — older particles shrink, dim and twinkle, then fade out at the tail; a translucent orbit band underneath ties the stream together
-- The band and particles are recomputed every frame straight from the orbital equations (circular orbits for the Sun-centred frame, exact rose curves for planet-centred frames) — no sampling buffers, no history, always exact
-- Trail colours keep per-planet identity (Saturn yellow, Earth blue, Mars red, Neptune cyan)
+### Motion Trails (Comet Ribbons)
+- Trail length is measured in **orbits**: the slider sets how much of each body's path relative to the current reference frame is kept (0–2, default 0.55 ≈ 200°, a comet arc; 1.0 = one full loop)
+- Each trail is a **single continuous camera-facing ribbon** — a bright white-hot core riding on a soft halo in the body's own colour. No beads, no dashes, no sampling gaps
+- **Comet profile**: a pulsing comet nucleus sits right at the body; the ribbon narrows into a neck, swells into a coma, then thins and dims to a point, dissolving completely over its last 18%
+- **It grows and dissolves**: on load / after switching the reference frame each trail stretches from nothing over ~2.6 s (same pace for every body, so outer planets never wait); the oldest end keeps dissolving, as a real dust tail would
+- **Alive, not static**: a slow brightness wave flows along the ribbon and a soft energy pulse travels from tail to head (each body has its own phase)
+- Ribbon width is set in **screen pixels**, converted per vertex to world units — a trail stays a readable band whether you are zoomed out at Neptune or pushed in on Earth
+- Positions are recomputed every frame straight from the orbital equations (exact circles for the Sun-centred frame, exact rose curves for planet-centred frames) — no history buffers, always exact at any time speed
+- Trail colours keep per-planet identity (Saturn gold, Earth blue, Mars red, Neptune cyan)
 
 ### Bilingual Support
 - Automatic language detection based on browser settings

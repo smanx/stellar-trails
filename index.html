@@ -1098,8 +1098,8 @@
         </div>
         
         <div class="control-group">
-            <label for="trail-slider"><span data-i18n="trailLength">Trail Length (orbits)</span>: <span id="trail-value" class="value">0.78</span></label>
-            <input type="range" id="trail-slider" min="0" max="2" step="0.05" value="0.78">
+            <label for="trail-slider"><span data-i18n="trailLength">Trail Length (orbits)</span>: <span id="trail-value" class="value">0.55</span></label>
+            <input type="range" id="trail-slider" min="0" max="2" step="0.05" value="0.55">
         </div>
         
         <div class="control-group">
@@ -1457,7 +1457,7 @@ Geoms: --</div>
             // 1 = 拖影覆盖一整圈轨道，2 = 两圈；每个天体的实际点数
             // 由「圈数 × 轨道周长 / 弧长步长」得出，因此半径大的天体
             // 点数更多，但所有天体保留的轨迹圈数一致。
-            trailOrbits: 0.78,
+            trailOrbits: 0.55,
             realisticScale: false,
             orbitThickness: 1.0,
             labelUpdateIntervalFrames: 2,
@@ -3888,17 +3888,21 @@ Geoms: --</div>
         //
         //   每个天体一条固定分段数的条带（tube），顶点位置每帧由解析方程
         //   直接重算。滑杆的「圈数」= 条带覆盖的角度跨度（1.0 = 360°）。
-        //   条带的「头部」锚定在天体当前位置，往回铺 N 圈 —— 与运行时长
-        //   完全无关，打开页面即完整。
+        //   条带的「头部」锚定在天体当前位置，往回铺 N 圈 —— 拿到的是
+        //   精确的真实轨迹，与运行时长无关；打开页面后的几秒里这条轨迹
+        //   由短到长「长出来」（见 trailAge / TRAIL_GROW_SECONDS）。
         //
-        // 渐变沿用「头亮尾淡」：aT = 1 在天体处，0 在最老端。
+        // 渐变沿用「头亮尾淡」：aT = 1 在天体处，0 在最老端（每帧按可见跨度归一化）。
 
-        // 拖影的视觉语言：一条「光笔刷」拖出的发光丝带，而不是串珠虚线。
-        //   · 横向：窄而炽白的芯 + 宽而柔的晕（天体本色），边缘平滑收边到 0
-        //   · 纵向：从尾到头指数增亮（尾端无硬切边）+ 头部热斑
-        //   · 宽度：头部最宽，向尾部收细到近乎为零，中段轻微鼓起
-        // 几何仍按解析轨道每帧重算，但截面由「八边形管」换成「始终朝向
-        // 相机的带状截面」——这样从任何视角看都是一条饱满的光带而非细管。
+        // 拖影的视觉语言：一颗彗星拖出的发光彗尾 —— 一条连续的光带，
+        // 而不是串珠虚线、也不是均匀发亮的圆环。
+        //   · 横向：窄而炽白的芯 + 宽而柔的晕（天体本色），两端平滑收边
+        //   · 纵向：彗头炽亮（带脉动的彗核），亮度按幂次向彗尾衰减，
+        //           最后 18% 完全溶解 —— 老去的部分慢慢消失
+        //   · 宽度：贴近天体处收成「颈」，向后鼓起成彗发，再向彗尾收细成一点
+        //   · 动效：沿轨迹流动的明暗波 + 一团由尾向头推进的能量脉冲
+        // 几何仍按解析轨道每帧重算，截面「始终朝向相机」——从任何视角看
+        // 都是一条饱满的光带而非细管。
 
         const trailVertexShader = `
             attribute float aT;
@@ -3916,26 +3920,38 @@ Geoms: --</div>
             uniform vec3 uGlow;
             uniform vec3 uCore;
             uniform float uOpacity;
+            uniform float uTime;
+            uniform float uPhase;
             varying float vT;
             varying float vSide;
             void main() {
-                float t = clamp(vT, 0.0, 1.0);
+                float t = clamp(vT, 0.0, 1.0);   // 0 = 尾（最老），1 = 头（天体）
                 float s = abs(vSide);
 
-                // 纵向：从彗头到彗尾柔和衰减（指数 1.15），尾端融进背景但不至于消失
-                float lenFade = pow(t, 1.15);
-                // 头部热斑：紧贴天体的一小段高亮，形成彗核
-                float head = exp(-pow((1.0 - t) / 0.11, 2.0));
+                // --- 纵向 ---
+                // 尾端 18% 完全溶解：没有硬切边
+                float tailFade = smoothstep(0.0, 0.18, t);
+                // 主体亮度：彗头炽亮、彗尾渐隐（1.2% → 100%），
+                // 明确是一条拖尾而不是均匀发亮的圆环
+                float body = mix(0.012, 1.0, pow(t, 3.0));
+                // 彗核：紧贴天体的一团炽热亮斑（轻微脉动，像在呼吸）
+                float head = exp(-pow((1.0 - t) / 0.055, 2.0)) * (0.92 + 0.08 * sin(uTime * 2.6));
+                // 能量流：沿轨迹缓慢流动的明暗波，让光带「活」起来
+                float flow = 0.93 + 0.07 * sin(t * 38.0 - uTime * 2.0);
+                // 能量脉冲：一团亮斑沿彗尾向彗头推进（每颗天体相位不同）
+                float pulsePos = fract(uTime * 0.16 + uPhase);
+                float pulse = exp(-pow((t - pulsePos) / 0.075, 2.0)) * 0.38;
 
-                // 横向：窄亮的芯 + 宽柔的晕，两端收边到 0（没有硬边）
-                float core = exp(-pow(s / 0.30, 2.0));
-                float halo = exp(-pow(s / 0.95, 2.0)) * 0.50;
-                float edge = smoothstep(1.0, 0.26, s);
+                // --- 横向 ---
+                // 窄而炽白的芯 + 宽而柔的晕（天体本色），两端收边到 0
+                float core = exp(-pow(s / 0.28, 2.0));
+                float halo = exp(-pow(s / 0.90, 2.0)) * 0.40;
+                float edge = smoothstep(1.0, 0.28, s);
                 float across = (core + halo) * edge;
 
-                float a = uOpacity * across * (lenFade * 0.85 + head * 1.15);
-                // 芯偏白、晕保留行星本色 —— 颜色只在芯里提亮，避免整条发白
-                vec3 col = mix(uGlow, uCore, clamp(core * 0.55 + head * 0.75, 0.0, 1.0));
+                float a = uOpacity * across * (tailFade * (body * flow + pulse) + head * 1.1);
+                // 芯偏白、晕保留行星本色 —— 只有最亮的一条线发白
+                vec3 col = mix(uGlow, uCore, clamp(core * 0.45 + head * 0.62, 0.0, 1.0));
                 gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
             }
         `;
@@ -3951,12 +3967,14 @@ Geoms: --</div>
                 Math.min(0.62, hsl.l * 1.15 + 0.06)
             );
             // 芯层：向白色提亮，形成炽热的中心线
-            const core = glow.clone().lerp(new THREE.Color(0xffffff), 0.72);
+            const core = glow.clone().lerp(new THREE.Color(0xffffff), 0.5);
             return new THREE.ShaderMaterial({
                 uniforms: {
                     uGlow: { value: glow },
                     uCore: { value: core },
-                    uOpacity: { value: opacity }
+                    uOpacity: { value: opacity },
+                    uTime: { value: 0 },
+                    uPhase: { value: Math.random() }
                 },
                 vertexShader: trailVertexShader,
                 fragmentShader: trailFragmentShader,
@@ -3974,7 +3992,7 @@ Geoms: --</div>
         const TRAIL_MAX_ORBITS = 2;
         const TRAIL_MAX_SEGMENTS = TRAIL_SEGMENTS_PER_ORBIT * TRAIL_MAX_ORBITS;
         // 横向列数（奇数：中间一列是芯，两侧对称铺到 ±1）
-        const TRAIL_WIDTH_COLS = 7;
+        const TRAIL_WIDTH_COLS = 11;
 
         // 为一个天体分配拖影丝带网格（几何一次性建满最大段数，之后只改顶点）
         function createTrailBand(color, opacity) {
@@ -4042,6 +4060,10 @@ Geoms: --</div>
             const segs = TRAIL_MAX_SEGMENTS;
             const cols = TRAIL_WIDTH_COLS;
             const rowLength = cols;
+            // aT 必须是「本次可见弧段」上的归一化参数：0 = 尾端，1 = 头部。
+            // 每帧按 usedSegs 重写，这样生长过程中头部始终是 t=1，
+            // 亮部与彗核永远跟着天体，而不是停在整条 360 段几何的末尾。
+            const tAttr = geo.attributes.aT;
 
             // 相对角速度（玫瑰线频率）：目标与参考的角速度之差。
             // 月球世界角速度 = 地球角速度 + 本征角速度。
@@ -4065,8 +4087,8 @@ Geoms: --</div>
             // 由零长满所选圈数，之后稳定保持。不再被「天体已走过的模拟时长」
             // 卡住 —— 1x 速度下走过 1 圈要按分钟计，那样拖尾会短得像个小尾巴。
             const grow01 = Math.min(1, ((ageSec && ageSec.real) || 0) / TRAIL_GROW_SECONDS);
-            // 缓动：起步快、收尾慢，长出来的过程更像笔刷拖过
-            const eased = 1 - Math.pow(1 - grow01, 2.2);
+            // 缓动：先慢后快的平滑生长（smoothstep），拖尾像被笔刷牵出来
+            const eased = grow01 * grow01 * (3 - 2 * grow01);
             const visibleSec = maxSpanSec * eased;
             if (visibleSec < maxSpanSec * 0.02) {
                 // 刚启动：整条隐藏
@@ -4159,26 +4181,28 @@ Geoms: --</div>
                     _tbN.set(-_tbTangent.z, 0, _tbTangent.x);
                 }
                 _tbN.normalize();
-                // 宽度：从彗头到彗尾平滑收细；用平方根曲线避免末端突变
-                // （之前头部用 headBoost 局部加宽，在最后一段形成方块突起）
-                const taper = 0.52 + 0.48 * Math.pow(t, 0.45);
+                // 宽度：贴近天体的地方收成「颈」，向后鼓起最宽，再向彗尾收细成一点。
+                // 这样彗头不会变成一根比行星还粗的横杆，而是水滴状的彗发。
+                const headNeck = 0.72 + 0.28 * Math.min(1, (1 - t) / 0.09);
+                const taper = headNeck * (0.05 + 0.95 * Math.pow(t, 0.50));
                 const camDist = Math.hypot(camera.position.x - px, camera.position.y, camera.position.z - pz);
                 const pxWorld = trailWorldPerPixel(camDist);
                 const rr = baseRadius * taper * pxWorld;
-                // 抬高一点，避免与静态轨道环共面产生 z-fighting
-                const yLift = 0.45 + rr * 0.20;
+                // 贴住轨道平面（只留极小的抬升避免与轨道环共面闪烁）
+                const yLift = 0.06 + rr * 0.12;
                 for (let j = 0; j < cols; j++) {
                     const side = (j / (cols - 1)) * 2 - 1;                  // -1 .. 1
                     const idx = (i * rowLength + j) * 3;
                     arr[idx] = px + rr * side * _tbN.x;
                     arr[idx + 1] = yLift + rr * side * _tbN.y;
                     arr[idx + 2] = pz + rr * side * _tbN.z;
+                    // 归一化弧长：头部恒为 1，尾部恒为 0（随生长变化）
+                    tAttr.array[i * rowLength + j] = t;
                 }
             }
 
-            // 未使用的段塌缩到头部并置 aT=0（透明），避免渲染垃圾
+            // 未使用的段塌缩到头部（退化三角形，面积为零），并置 aT=0
             if (usedSegs < segs) {
-                const tAttr = geo.attributes.aT;
                 const hx = arr[(usedSegs * rowLength) * 3];
                 const hy = arr[(usedSegs * rowLength) * 3 + 1];
                 const hz = arr[(usedSegs * rowLength) * 3 + 2];
@@ -4189,9 +4213,9 @@ Geoms: --</div>
                         tAttr.array[idx] = 0;
                     }
                 }
-                tAttr.needsUpdate = true;
             }
 
+            tAttr.needsUpdate = true;
             posAttr.needsUpdate = true;
         }
 
@@ -4538,7 +4562,7 @@ Geoms: --</div>
 
         // 太阳拖影（解析条带；太阳相对自己静止，条带只在天体本身绕其他
         // 参考中心运动时才有意义，这里保留统一结构）
-        sunObj.trailLine = { mesh: createTrailBand(0xFFCC00, 0.58), visible: false };
+        sunObj.trailLine = { mesh: createTrailBand(0xFFCC00, 0.60), visible: false };
         sunObj.trailLine.mesh.visible = false;
         scene.add(sunObj.trailLine.mesh);
 
@@ -4775,9 +4799,9 @@ Geoms: --</div>
         // 生长速度与行星无关：任何天体都在 TRAIL_GROW_SECONDS 内长满自己的
         // 圈数上限 —— 外行星不用像旧「按模拟时间」方案那样干等上百分钟。
         // 暂停时拖尾冻结（不再生长也不消散），恢复后继续。
-        // 生长时间压到 4 秒：保留「拖尾随运动长出来」的动感，但打开页面
-        // 几乎立刻就能看到完整彗尾，不用干等 20 多秒。
-        const TRAIL_GROW_SECONDS = 1.6;
+        // 生长时间压到 2.6 秒：保留「拖尾随运动长出来」的动感，但打开页面
+        // 很快就能看到完整彗尾，不用干等 20 多秒。
+        const TRAIL_GROW_SECONDS = 2.6;
 
         const trailAge = new Map();   // body -> { real: 真实秒, sim: 模拟秒 @1x }
 
@@ -5544,9 +5568,20 @@ Geoms: --</div>
 
                     const bodySize = (typeof p.size === 'number' && p.size > 0) ? p.size : 3;
                     // 半宽以「屏幕像素」为单位（见 updateTrailBand 里的换算）：
-                    // 粗一点的行星拖尾更宽，细的略窄，但都在 3-7 px 区间。
-                    const pxHalfWidth = Math.max(4.5, Math.min(11.0, 4.5 + bodySize * 0.70));
+                    // 太阳的光带最宽，行星按体积分档，月球最细
+                    let pxHalfWidth;
+                    if (p === sunObj) {
+                        pxHalfWidth = 9.0;
+                    } else if (p === moonObj) {
+                        pxHalfWidth = 2.6;
+                    } else {
+                        pxHalfWidth = Math.max(4.0, Math.min(8.0, 3.6 + bodySize * 0.55));
+                    }
                     const halfWidth = pxHalfWidth * thicknessScale;
+                    // 流动光效的时间基准
+                    if (tl.mesh.material.uniforms.uTime) {
+                        tl.mesh.material.uniforms.uTime.value = nowMs * 0.001;
+                    }
                     updateTrailBand(tl.mesh, desc, spanOrbits, halfWidth, trailAge.get(p) || 0);
                     setTrailMeshVisible(tl, true);
                 });
