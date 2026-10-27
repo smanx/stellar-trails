@@ -1686,7 +1686,6 @@ Geoms: --</div>
             }
             applyPostFXMode();
             rebuildQualityGeometries();
-            clearTrails();
             renderer.shadowMap.needsUpdate = true;
             if (typeof applySceneGlossMode === 'function') {
                 applySceneGlossMode(config.qualityMode === 'glossy');
@@ -3227,9 +3226,7 @@ Geoms: --</div>
             realSize: 109,
             orbitalPeriod: null,
             mesh: null,
-            trailPoints: [],
             trailLine: null,
-            trailLength: null, // 稍后初始化
             description: '太阳系的中心，一颗G型主序星，提供光和热'
         };
 
@@ -3884,9 +3881,18 @@ Geoms: --</div>
             return uniforms;
         }
 
-        // === 拖影渐变渲染 ===
-        // 自建带“年龄”属性的管道几何：头部（最新采样）粗且亮，尾部细且淡，
-        // 让拖影呈现出运动拖尾的速度感，而不是等宽等亮的死线。
+        // === 拖影渲染：解析轨道条带 ===
+        // 拖影就是天体的公转轨道本身 —— 轨道是解析圆（或行星参考系下的解析
+        // 玫瑰线），每一帧都能精确算出任意角度处的位置。因此拖影不需要
+        // 采样缓冲、不需要历史积累、不需要曲线拟合：
+        //
+        //   每个天体一条固定分段数的条带（tube），顶点位置每帧由解析方程
+        //   直接重算。滑杆的「圈数」= 条带覆盖的角度跨度（1.0 = 360°）。
+        //   条带的「头部」锚定在天体当前位置，往回铺 N 圈 —— 与运行时长
+        //   完全无关，打开页面即完整。
+        //
+        // 渐变沿用「头亮尾淡」：aT = 1 在天体处，0 在最老端。
+
         const trailVertexShader = `
             attribute float aT;
             varying float vT;
@@ -3901,11 +3907,12 @@ Geoms: --</div>
             uniform float uOpacity;
             varying float vT;
             void main() {
+                // 头部（vT=1，天体处）亮，尾部（vT=0）渐隐。
+                // 渐变保持温和（0.35 下限），让整圈轨道始终可辨 —— 尤其
+                // 大半径外行星，若尾部完全隐没，视觉上就只剩一段弧。
                 float head = smoothstep(0.0, 1.0, vT);
-                // 尾部快速衰减，头部保持明亮
-                float a = pow(head, 1.6) * uOpacity;
-                // 头部略微提亮，但不至于被 bloom 冲成白团
-                vec3 col = mix(uColor * 0.72, mix(uColor, vec3(1.0), 0.10), head);
+                float a = (0.35 + 0.65 * pow(head, 1.5)) * uOpacity;
+                vec3 col = mix(uColor * 0.85, mix(uColor, vec3(1.0), 0.10), head);
                 gl_FragColor = vec4(col, a);
             }
         `;
@@ -3936,48 +3943,29 @@ Geoms: --</div>
             });
         }
 
-        // 生成沿路径渐变的管道几何（aT: 0 = 尾，1 = 头）
-        function createTrailGeometry(curve, tubularSegments, radius, radialSegments) {
-            const geometry = new THREE.BufferGeometry();
-            if (!curve || !curve.points || curve.points.length < 2 || tubularSegments < 1) {
-                return geometry;
-            }
+        // 条带分段数：按每 2° 一段配置（1 圈 = 180 段），2 圈 = 360 段。
+        // 固定分配，每帧只重算顶点位置，不重建几何。
+        const TRAIL_SEGMENTS_PER_ORBIT = 180;
+        const TRAIL_MAX_ORBITS = 2;
+        const TRAIL_MAX_SEGMENTS = TRAIL_SEGMENTS_PER_ORBIT * TRAIL_MAX_ORBITS;
 
-            const frames = curve.computeFrenetFrames(tubularSegments, false);
-            const positions = [];
-            const tValues = [];
+        // 为一个天体分配拖影条带网格（几何一次性建满最大段数，之后只改顶点）
+        function createTrailBand(color, opacity) {
+            const segs = TRAIL_MAX_SEGMENTS;
+            const radial = 6;   // 条带横截面用六边形，比八边形省 25%
+            const positions = new Float32Array((segs + 1) * (radial + 1) * 3);
+            const tValues = new Float32Array((segs + 1) * (radial + 1));
             const indices = [];
-            const P = new THREE.Vector3();
-            const N = new THREE.Vector3();
-            const rowLength = radialSegments + 1;
+            const rowLength = radial + 1;
 
-            for (let i = 0; i <= tubularSegments; i++) {
-                const t = i / tubularSegments;
-                curve.getPointAt(t, P);
-                // 半径从尾部到头部渐粗
-                const segmentRadius = radius * (0.26 + 0.74 * Math.pow(t, 0.7));
-                const normal = frames.normals[i];
-                const binormal = frames.binormals[i];
-                for (let j = 0; j <= radialSegments; j++) {
-                    const v = (j / radialSegments) * Math.PI * 2;
-                    const sin = Math.sin(v);
-                    const cos = -Math.cos(v);
-                    N.set(
-                        cos * normal.x + sin * binormal.x,
-                        cos * normal.y + sin * binormal.y,
-                        cos * normal.z + sin * binormal.z
-                    ).normalize();
-                    positions.push(
-                        P.x + segmentRadius * N.x,
-                        P.y + segmentRadius * N.y,
-                        P.z + segmentRadius * N.z
-                    );
-                    tValues.push(t);
+            for (let i = 0; i <= segs; i++) {
+                for (let j = 0; j <= radial; j++) {
+                    const idx = i * rowLength + j;
+                    tValues[idx] = i / segs;
                 }
             }
-
-            for (let i = 1; i <= tubularSegments; i++) {
-                for (let j = 1; j <= radialSegments; j++) {
+            for (let i = 1; i <= segs; i++) {
+                for (let j = 1; j <= radial; j++) {
                     const a = rowLength * (i - 1) + (j - 1);
                     const b = rowLength * i + (j - 1);
                     const c = rowLength * i + j;
@@ -3986,11 +3974,158 @@ Geoms: --</div>
                 }
             }
 
-            geometry.setIndex(indices);
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geometry.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1));
-            return geometry;
+            const geo = new THREE.BufferGeometry();
+            geo.setIndex(indices);
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geo.setAttribute('aT', new THREE.BufferAttribute(tValues, 1));
+            // 每帧都会整块重写 position，把包围盒剔除关掉
+            const mesh = new THREE.Mesh(geo, createTrailMaterial(color, opacity));
+            mesh.frustumCulled = false;
+            return mesh;
         }
+
+        // 复用的工作向量
+        const _tbTangent = new THREE.Vector3();
+        const _tbRefAxis = new THREE.Vector3();
+        const _tbBinormal = new THREE.Vector3();
+        const _tbN = new THREE.Vector3();
+        const _tbUp = new THREE.Vector3(0, 1, 0);
+        // 每帧重算一个天体的条带顶点（时间回推采样）。
+        // bodyDesc 描述目标天体与参考中心的解析轨道，每帧调用。任何参考系下
+        // 每个条带顶点都是真实轨迹上的点（P_body(τ) − P_ref(τ)），不是近似圆。
+        // bodyDesc: { radius, angle0, omega, isMoon, moonRadius, moonAngle0, moonOmega,
+        //             earthRadius, earthAngle0, earthOmega,
+        //             refRadius, refAngle0, refOmega, refIsSun, refIsMoon,
+        //             refMoonRadius, refMoonAngle0, refMoonOmega }
+        // spanOrbits: 覆盖圈数（按目标天体相对参考中心的角速度折算成时间）
+        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius) {
+            const geo = mesh.geometry;
+            const posAttr = geo.attributes.position;
+            const arr = posAttr.array;
+            const segs = TRAIL_MAX_SEGMENTS;
+            const radial = 6;
+            const rowLength = radial + 1;
+
+            const usedSegs = Math.max(2, Math.round(TRAIL_SEGMENTS_PER_ORBIT * spanOrbits));
+
+            // 相对角速度（玫瑰线频率）：目标与参考的角速度之差。
+            // 月球世界角速度 = 地球角速度 + 本征角速度。
+            let relOmega = bodyDesc.omega;
+            if (bodyDesc.isMoon) relOmega += bodyDesc.earthOmega;
+            if (!bodyDesc.refIsSun) {
+                relOmega = bodyDesc.isMoon
+                    ? (bodyDesc.omega + bodyDesc.earthOmega - bodyDesc.refOmega)
+                    : (bodyDesc.omega - bodyDesc.refOmega);
+            }
+            // 回推总时长：相对相位转过 spanOrbits 圈
+            const absRel = Math.abs(relOmega);
+            const durationSec = absRel > 1e-12 ? (Math.PI * 2 * spanOrbits) / absRel : 0;
+
+            for (let i = 0; i <= usedSegs; i++) {
+                const t = i / usedSegs;                       // 0 = 尾（最老），1 = 头
+                const tau = (1 - t) * durationSec;            // 往回的时间（秒 @1x）
+
+                // 目标天体世界位置（@1x 回推）
+                let wx, wz;
+                if (bodyDesc.isMoon) {
+                    const ea = bodyDesc.earthAngle0 - bodyDesc.earthOmega * tau;
+                    const ma = bodyDesc.moonAngle0 - bodyDesc.moonOmega * tau;
+                    wx = Math.cos(ea) * bodyDesc.earthRadius + Math.cos(ma) * bodyDesc.moonRadius;
+                    wz = Math.sin(ea) * bodyDesc.earthRadius + Math.sin(ma) * bodyDesc.moonRadius;
+                } else {
+                    const a = bodyDesc.angle0 - bodyDesc.omega * tau;
+                    wx = Math.cos(a) * bodyDesc.radius;
+                    wz = Math.sin(a) * bodyDesc.radius;
+                }
+
+                // 参考中心世界位置
+                let rx = 0, rz = 0;
+                if (!bodyDesc.refIsSun) {
+                    if (bodyDesc.refIsMoon) {
+                        // 参考中心是月球：地球 + 月球本征
+                        const ea = bodyDesc.refEarthAngle0 - bodyDesc.refEarthOmega * tau;
+                        const ma = bodyDesc.refMoonAngle0 - bodyDesc.refMoonOmega * tau;
+                        rx = Math.cos(ea) * bodyDesc.refEarthRadius + Math.cos(ma) * bodyDesc.refMoonRadius;
+                        rz = Math.sin(ea) * bodyDesc.refEarthRadius + Math.sin(ma) * bodyDesc.refMoonRadius;
+                    } else {
+                        const a = bodyDesc.refAngle0 - bodyDesc.refOmega * tau;
+                        rx = Math.cos(a) * bodyDesc.refRadius;
+                        rz = Math.sin(a) * bodyDesc.refRadius;
+                    }
+                }
+
+                const px = wx - rx;
+                const pz = wz - rz;
+
+                // 条带横截面参考系（沿相对轨迹的解析切向）
+                // 数值微分相邻两段的解析位置得到切向，稳健且通用
+                const eps = durationSec / usedSegs * 0.5 + 1e-6;
+                let tx, tz;
+                {
+                    let qx, qz;
+                    if (bodyDesc.isMoon) {
+                        const ea = bodyDesc.earthAngle0 - bodyDesc.earthOmega * (tau + eps);
+                        const ma = bodyDesc.moonAngle0 - bodyDesc.moonOmega * (tau + eps);
+                        qx = Math.cos(ea) * bodyDesc.earthRadius + Math.cos(ma) * bodyDesc.moonRadius;
+                        qz = Math.sin(ea) * bodyDesc.earthRadius + Math.sin(ma) * bodyDesc.moonRadius;
+                    } else {
+                        const a = bodyDesc.angle0 - bodyDesc.omega * (tau + eps);
+                        qx = Math.cos(a) * bodyDesc.radius;
+                        qz = Math.sin(a) * bodyDesc.radius;
+                    }
+                    if (!bodyDesc.refIsSun) {
+                        if (bodyDesc.refIsMoon) {
+                            const ea = bodyDesc.refEarthAngle0 - bodyDesc.refEarthOmega * (tau + eps);
+                            const ma = bodyDesc.refMoonAngle0 - bodyDesc.refMoonOmega * (tau + eps);
+                            qx -= Math.cos(ea) * bodyDesc.refEarthRadius + Math.cos(ma) * bodyDesc.refMoonRadius;
+                            qz -= Math.sin(ea) * bodyDesc.refEarthRadius + Math.sin(ma) * bodyDesc.refMoonRadius;
+                        } else {
+                            const a = bodyDesc.refAngle0 - bodyDesc.refOmega * (tau + eps);
+                            qx -= Math.cos(a) * bodyDesc.refRadius;
+                            qz -= Math.sin(a) * bodyDesc.refRadius;
+                        }
+                    }
+                    tx = qx - px; tz = qz - pz;
+                }
+                const tlen = Math.hypot(tx, tz) || 1;
+                _tbTangent.set(tx / tlen, 0, tz / tlen);
+                _tbRefAxis.crossVectors(_tbTangent, _tbUp);
+                if (_tbRefAxis.lengthSq() < 1e-10) _tbRefAxis.set(1, 0, 0);
+                _tbRefAxis.normalize();
+                _tbBinormal.crossVectors(_tbTangent, _tbRefAxis).normalize();
+
+                const rr = baseRadius * (0.50 + 0.50 * Math.pow(t, 0.7));
+                for (let j = 0; j <= radial; j++) {
+                    const v = (j / radial) * Math.PI * 2;
+                    const sin = Math.sin(v);
+                    const cos = -Math.cos(v);
+                    _tbN.set(
+                        cos * _tbRefAxis.x + sin * _tbBinormal.x,
+                        cos * _tbRefAxis.y + sin * _tbBinormal.y,
+                        cos * _tbRefAxis.z + sin * _tbBinormal.z
+                    );
+                    const idx = (i * rowLength + j) * 3;
+                    arr[idx] = px + rr * _tbN.x;
+                    arr[idx + 1] = rr * _tbN.y;
+                    arr[idx + 2] = pz + rr * _tbN.z;
+                }
+            }
+
+            // 未使用的段缩到 0（放到头部位置），避免渲染垃圾
+            if (usedSegs < segs) {
+                const hx = arr[(usedSegs * rowLength) * 3];
+                const hz = arr[(usedSegs * rowLength) * 3 + 2];
+                for (let i = usedSegs + 1; i <= segs; i++) {
+                    for (let j = 0; j <= radial; j++) {
+                        const idx = (i * rowLength + j) * 3;
+                        arr[idx] = hx; arr[idx + 1] = 0; arr[idx + 2] = hz;
+                    }
+                }
+            }
+
+            posAttr.needsUpdate = true;
+        }
+
 
         // 创建行星
         planetsData.forEach(data => {
@@ -4137,31 +4272,12 @@ Geoms: --</div>
                 mesh.add(faintRing);
             }
 
-// 初始化拖影几何体（使用TubeGeometry实现可变粗细）
-            // 拖影点数由圈数语义决定（见 applyTrailOrbits），此处先置 0 等待统一初始化
-            const trailLength = 0;
-            
-            const trailMat = createTrailMaterial(data.color, 0.62);
-            
-            // 创建一个空的管道网格，稍后会根据路径点重新生成
-            const trailMesh = new THREE.Mesh(new THREE.BufferGeometry(), trailMat);
-            trailMesh.frustumCulled = false;
-            trailMesh.visible = false; // 初始隐藏
+// 初始化拖影条带（解析轨道，见 createTrailBand）
+            const trailMesh = createTrailBand(data.color, 0.62);
+            trailMesh.visible = false;
             scene.add(trailMesh);
-            
-            // 保存拖影网格和路径点
-            const trailLine = {
-                mesh: trailMesh,
-                curve: new THREE.CatmullRomCurve3([]),
-                points: [],
-                buffer: [],
-                start: 0,
-                count: 0,
-                lastSampleMs: 0,
-                lastSamplePos: new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN),
-                dirty: false,
-                visible: false
-            };
+
+            const trailLine = { mesh: trailMesh, visible: false };
 
             // 创建标签
             const label = createLabel(data, new THREE.Vector3(0, data.size + 5, 0));
@@ -4177,8 +4293,6 @@ Geoms: --</div>
                 spinDirection,
                 baseSpin: spinSpeedFor(data.rotationPeriodHours),
                 trailLine,
-                trailPoints: [],
-                trailLength: trailLength,
                 angle: Math.random() * Math.PI * 2,
                 baseSpeed: data.speed
             };
@@ -4352,31 +4466,14 @@ Geoms: --</div>
         const jupiterTrojans = createJupiterTrojans();
         worldGroup.add(jupiterTrojans);
 
-        // 太阳拖影（使用TubeGeometry）
-        sunObj.trailLength = 0;   // 由 applyTrailOrbits 统一初始化
-        sunObj.trailLine = {
-            mesh: new THREE.Mesh(new THREE.BufferGeometry(), createTrailMaterial(0xFFCC00, 0.55)),
-            curve: new THREE.CatmullRomCurve3([]),
-            points: [],
-            buffer: [],
-            start: 0,
-            count: 0,
-            lastSampleMs: 0,
-            lastSamplePos: new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN),
-            dirty: false,
-            visible: false
-        };
-        sunObj.trailLine.mesh.frustumCulled = false;
+        // 太阳拖影（解析条带；太阳相对自己静止，条带只在天体本身绕其他
+        // 参考中心运动时才有意义，这里保留统一结构）
+        sunObj.trailLine = { mesh: createTrailBand(0xFFCC00, 0.55), visible: false };
         sunObj.trailLine.mesh.visible = false;
         scene.add(sunObj.trailLine.mesh);
 
         // --- 月球（地球的卫星） ---
         const moonParentPlanet = planets.find(p => p.nameEn === 'Earth');
-        const moonTrailMat = createTrailMaterial(0xcccccc, 0.5);
-        const moonTrailMesh = new THREE.Mesh(new THREE.BufferGeometry(), moonTrailMat);
-        moonTrailMesh.frustumCulled = false;
-        moonTrailMesh.visible = false;
-        scene.add(moonTrailMesh);
         const moonTextures = createMoonTexture();
         const moonMaterial = new THREE.MeshStandardMaterial({
             map: moonTextures.map,
@@ -4396,25 +4493,14 @@ Geoms: --</div>
             name: '月球',
             nameEn: 'Moon',
             mesh: moonMesh,
-            trailLine: {
-                mesh: moonTrailMesh,
-                curve: new THREE.CatmullRomCurve3([]),
-                points: [],
-                buffer: [],
-                start: 0,
-                count: 0,
-                lastSampleMs: 0,
-                lastSamplePos: new THREE.Vector3(NaN, NaN, NaN),
-                dirty: false,
-                visible: false
-            },
-            trailPoints: [],
-            trailLength: 0,   // 由 applyTrailOrbits 统一初始化（月球圈数按其绕地轨道计算）
+            trailLine: { mesh: createTrailBand(0xcccccc, 0.5), visible: false },
             angle: Math.random() * Math.PI * 2,
             baseSpeed: orbitSpeedFor(27.32),   // 月球真实公转周期 27.32 天
             orbitRadius: 9.6,
             parentPlanet: moonParentPlanet
         };
+        moonObj.trailLine.mesh.visible = false;
+        scene.add(moonObj.trailLine.mesh);
         worldGroup.add(moonMesh);
 
         const trailBodies = [...planets, sunObj, moonObj];
@@ -4450,9 +4536,6 @@ Geoms: --</div>
         let selectedPlanet = null;
         const clickMouse = new THREE.Vector2();
         const clickRaycaster = new THREE.Raycaster();
-        const trailWorldPos = new THREE.Vector3();
-        const trailRefPos = new THREE.Vector3();
-        const trailRelativePos = new THREE.Vector3();
         const atmSunPos = new THREE.Vector3();
         const labelWorldTmp = new THREE.Vector3();
         const focusTempWorldPos = new THREE.Vector3();
@@ -4609,8 +4692,7 @@ Geoms: --</div>
             document.getElementById('show-info-btn').classList.remove('is-visible');
             document.getElementById('view-name').textContent = i18n[currentLang].sunStatic;
             worldGroup.position.set(0, 0, 0);
-            clearTrails();
-            
+
             // 只在明确要求时才重置相机
             if (resetCamera) {
                 camera.position.set(0, 300, 500);
@@ -4618,194 +4700,11 @@ Geoms: --</div>
             }
         }
 
-        // === 按圈数计算拖影长度 ===
-        // 滑杆的语义是「圈数」：1 = 覆盖相对参考系的一整圈轨道。
-        // 每个天体的实际点数 = 圈数 × 该天体轨道周长 / 弧长采样间距。
-        // 半径大的行星周长长、点数多，半径小的点数少 —— 但保留的圈数一致。
-        // 采样同样按弧长进行（见 pushTrailSample），保证点距均匀。
-        const TRAIL_ARC_STEP = 1.2;   // 相邻采样点的弧长间距（世界单位）
-
-        function orbitCircumferenceOf(p) {
-            // 相对参考系的近似轨道半径：行星绕原点，月球绕地球
-            if (p === moonObj || p.parentPlanet) {
-                return Math.PI * 2 * (p.orbitRadius || 9.6);
-            }
-            return Math.PI * 2 * (p.distance || 0);
-        }
-
-        function trailPointsForOrbits(p, orbits) {
-            if (!(orbits > 0)) return 0;
-            const circumference = orbitCircumferenceOf(p);
-            // 太阳作为参考中心时周长为 0：它绕自己“公转”没有轨迹，
-            // 给一个小常数让拖影机制保持一致（实际显示时几乎是静止的一个点）
-            if (circumference <= 0) return 2;
-            return Math.max(2, Math.round(orbits * circumference / TRAIL_ARC_STEP));
-        }
-
-        // 把「圈数」应用到所有天体：重算点数，预填历史轨迹并清掉实时缓冲
+        // === 拖影圈数应用 ===
+        // 条带几何一次性建满最大段数，圈数只影响每帧重算时覆盖的角度跨度，
+        // 因此应用圈数不需要重建几何，也不需要清任何缓冲 —— 下一帧直接生效。
         function applyTrailOrbits() {
-            trailBodies.forEach(p => {
-                const newLen = trailPointsForOrbits(p, config.trailOrbits);
-                p.trailLength = newLen;
-            });
-            clearTrails();
-            primeTrailHistory();
-        }
-
-        // === 历史轨迹预填 ===
-        // 拖影缓冲从零积累：外行星（木星 1x 速度下约 10 分钟/圈，海王星 143
-        // 分钟/圈）在跑完一整圈之前永远显示不出完整的「1 圈」。
-        // 但本项目所有轨道都是解析圆周运动（世界角 θ(t) = θ0 − ω·t 线性回推），
-        // 任意过去时刻的位置都能直接算出。应用圈数 / 切换参考中心时，
-        // 直接把过去 N 圈的真实相对位置预填进缓冲区，拖影即刻完整。
-        //
-        // 注意：当参考中心不是太阳时，两颗行星的相对轨迹是「玫瑰线」而非圆，
-        // 一圈的角度对应关系不再严格成立。此时按时间均匀回推采样（点数取
-        // maxPoints 对应的时长），拖影依然精确重现真实相对运动的历史。
-        function primeTrailHistory() {
-            if (!lockedPlanet) return;
-
-            const refIsSun = lockedPlanet === sunObj;
-            const refPlanet = (!refIsSun && !lockedPlanet.parentPlanet) ? lockedPlanet : null;
-            const refIsMoon = !refIsSun && !!lockedPlanet.parentPlanet;
-
-            // 参考中心的轨道要素与角速度
-            let refAngle = 0, refRadius = 0, refOmega = 0;
-            if (refPlanet) {
-                refAngle = refPlanet.angle || 0;
-                refRadius = refPlanet.distance || 0;
-                refOmega = (refPlanet.baseSpeed || 0) * 60;
-            }
-
-            const maxOrbits = Math.max(config.trailOrbits || 1, 0.01);
-
-            trailBodies.forEach(p => {
-                const tl = p.trailLine;
-                const maxPoints = p.trailLength || 0;
-                if (!tl || !maxPoints) return;
-
-                const isMoon = p === moonObj;
-                const radius = isMoon ? (p.orbitRadius || 9.6) : (p.distance || 0);
-                const angle0 = p.angle || 0;
-                const omega = (p.baseSpeed || 0) * 60;   // 弧度/秒 @1x
-
-                // 参考中心：月球参考系直接用其 mesh 的世界位置做平移近似
-                //（月球位置含地球位移，解析回推较复杂；预填时以「当前地球位置
-                // + 月球本征圆周」近似，误差随时间增大，但月球预填只有 50 点、
-                // 半分钟内的历史，误差可忽略）
-                let earthAngle0 = 0, earthOmega = 0, earthRadius = 0;
-                if (refIsMoon && moonParentPlanet) {
-                    earthAngle0 = moonParentPlanet.angle || 0;
-                    earthOmega = moonParentPlanet.baseSpeed * 60;
-                    earthRadius = moonParentPlanet.distance || 0;
-                }
-
-                // 回推时长：太阳参考系下按「该天体绕 ref 转过 maxOrbits 圈」取；
-                // 其他参考系按相对角速度换算（相对轨迹是玫瑰线，按时间均匀采样）
-                let durationSec;
-                if (refIsSun) {
-                    const omegaEff = Math.abs(omega);
-                    durationSec = omegaEff > 1e-9 ? (Math.PI * 2 * maxOrbits) / omegaEff : 0;
-                } else {
-                    const eff = isMoon
-                        ? Math.abs(omega + earthOmega - refOmega)
-                        : Math.abs(omega - refOmega);
-                    durationSec = eff > 1e-9 ? (Math.PI * 2 * maxOrbits) / eff : 0;
-                }
-
-                // 步数：与实时采样保持一致 —— 每圈「周长 / TRAIL_ARC_STEP」个点。
-                // 旧实现给非太阳参考系封了 512 上限，导致预填段点距是实时段的
-                // 数倍，交界处密度突变，外行星整环呈现虚线状。
-                const circumference = Math.PI * 2 * radius;
-                const pointsPerOrbit = circumference / TRAIL_ARC_STEP;
-                const steps = Math.min(maxPoints, Math.max(2, Math.round(pointsPerOrbit * maxOrbits)));
-                if (steps < 2) {
-                    tl.count = 0;
-                    return;
-                }
-
-                // 从最老时刻回推到当前时刻，按「最老在前」的顺序写入环形缓冲
-                if (tl.buffer.length !== maxPoints) {
-                    tl.buffer = Array.from({ length: maxPoints }, () => new THREE.Vector3());
-                }
-                tl.start = 0;
-                tl.count = 0;
-                tl.arcSinceLast = 0;
-
-                for (let i = 0; i < steps; i++) {
-                    // frac: 0 = 最老，1 = 当前
-                    const frac = steps > 1 ? i / (steps - 1) : 0;
-                    const tau = (1 - frac) * durationSec;   // 往回的时间
-
-                    let wx, wz;
-                    if (isMoon) {
-                        // 月球世界位置 = 地球位置 + 本征圆周
-                        const ea = earthAngle0 - earthOmega * tau;
-                        const ma = angle0 - omega * tau;
-                        const ex = refIsMoon ? 0 : Math.cos(ea) * earthRadius;
-                        const ez = refIsMoon ? 0 : Math.sin(ea) * earthRadius;
-                        wx = ex + Math.cos(ma) * radius;
-                        wz = ez + Math.sin(ma) * radius;
-                    } else {
-                        const a = angle0 - omega * tau;
-                        wx = Math.cos(a) * radius;
-                        wz = Math.sin(a) * radius;
-                    }
-
-                    // 相对参考中心
-                    let rx = wx, rz = wz;
-                    if (refPlanet) {
-                        const ra = refAngle - refOmega * tau;
-                        rx = wx - Math.cos(ra) * refRadius;
-                        rz = wz - Math.sin(ra) * refRadius;
-                    } else if (refIsMoon) {
-                        // 参考中心是月球：refPos 是当前世界位置。
-                        // 预填历史用「当前地球位置 + 月球本征回推」近似。
-                        const ma0 = lockedPlanet.angle || 0;
-                        const moonOmega = lockedPlanet.baseSpeed * 60;
-                        const ma = ma0 - moonOmega * tau;
-                        rx = wx - (moonParentPlanet ? Math.cos(earthAngle0) * earthRadius : 0)
-                               - Math.cos(ma) * (lockedPlanet.orbitRadius || 9.6) * 0;
-                        rz = wz - (moonParentPlanet ? Math.sin(earthAngle0) * earthRadius : 0)
-                               - Math.sin(ma) * (lockedPlanet.orbitRadius || 9.6) * 0;
-                        // 月球参考系的历史回推误差较大，简单起见把参考点固定在当前地球位置
-                        rx = wx - (moonParentPlanet ? Math.cos(earthAngle0) * earthRadius : 0);
-                        rz = wz - (moonParentPlanet ? Math.sin(earthAngle0) * earthRadius : 0);
-                    }
-
-                    const idx = i % maxPoints;
-                    tl.buffer[idx].set(rx, 0, rz);
-                    tl.count = i + 1;
-                }
-
-                // 当前位置（i = steps-1）必须精确等于天体当前位置，避免接缝
-                {
-                    const cur = tl.buffer[(steps - 1) % maxPoints];
-                    const isMoonP = p === moonObj;
-                    const r2 = isMoonP ? (p.orbitRadius || 9.6) : (p.distance || 0);
-                    const a2 = p.angle || 0;
-                    let cx = Math.cos(a2) * r2;
-                    let cz = Math.sin(a2) * r2;
-                    if (isMoonP && moonParentPlanet) {
-                        cx += Math.cos(moonParentPlanet.angle) * moonParentPlanet.distance;
-                        cz += Math.sin(moonParentPlanet.angle) * moonParentPlanet.distance;
-                    }
-                    if (refPlanet) {
-                        cx -= Math.cos(refAngle) * refRadius;
-                        cz -= Math.sin(refAngle) * refRadius;
-                    } else if (refIsMoon && moonParentPlanet) {
-                        cx -= Math.cos(earthAngle0) * earthRadius;
-                        cz -= Math.sin(earthAngle0) * earthRadius;
-                    }
-                    cur.set(cx, 0, cz);
-                }
-
-                // 实时采样状态重置：lastSamplePos = 当前位置
-                tl.lastSamplePos.copy(tl.buffer[(steps - 1) % maxPoints]);
-                tl.lastSampleMs = performance.now();
-                tl.dirty = true;
-                setTrailMeshVisible(tl, false);   // 等下一帧重建几何后显示
-            });
+            // 圈数变化即时生效（updateTrailBands 每帧读取 config.trailOrbits）
         }
 
         function setTrailMeshVisible(trailLine, visible) {
@@ -4816,88 +4715,6 @@ Geoms: --</div>
             trailLine.visible = visible;
         }
 
-        function clearTrails() {
-            trailBodies.forEach(p => {
-                p.trailPoints = [];
-                if (p.trailLine) {
-                    p.trailLine.points.length = 0;
-                    p.trailLine.buffer.length = 0;
-                    p.trailLine.start = 0;
-                    p.trailLine.count = 0;
-                    p.trailLine.lastSampleMs = 0;
-                    p.trailLine.lastSamplePos.set(Number.NaN, Number.NaN, Number.NaN);
-                    p.trailLine.arcSinceLast = 0;
-                    p.trailLine.dirty = false;
-                    if (p.trailLine.mesh) {
-                        setTrailMeshVisible(p.trailLine, false);
-                        p.trailLine.mesh.geometry.dispose();
-                        p.trailLine.mesh.geometry = new THREE.BufferGeometry();
-                    }
-                }
-            });
-        }
-
-        function pushTrailSample(trailLine, sample, maxPoints, nowMs) {
-            if (maxPoints <= 0) {
-                return false;
-            }
-
-            if (trailLine.buffer.length !== maxPoints) {
-                trailLine.buffer = Array.from({ length: maxPoints }, () => new THREE.Vector3());
-                trailLine.start = 0;
-                trailLine.count = 0;
-                trailLine.arcSinceLast = 0;
-            }
-
-            // 按弧长采样：相对参考系的运动距离每累计 TRAIL_ARC_STEP 记录一个点。
-            // 点距均匀 → 每圈点数 = 周长 / 步长 → 点数正比于轨道周长，
-            // 配合 trailPointsForOrbits 的圈数换算，各天体保留的圈数严格一致。
-            trailLine.arcSinceLast = (trailLine.arcSinceLast || 0)
-                + trailLine.lastSamplePos.distanceTo(sample);
-            if (Number.isFinite(trailLine.lastSamplePos.x) && trailLine.arcSinceLast < TRAIL_ARC_STEP) {
-                return false;
-            }
-            trailLine.arcSinceLast = 0;
-
-            let writeIndex;
-            if (trailLine.count < maxPoints) {
-                writeIndex = (trailLine.start + trailLine.count) % maxPoints;
-                trailLine.count += 1;
-            } else {
-                writeIndex = trailLine.start;
-                trailLine.start = (trailLine.start + 1) % maxPoints;
-            }
-
-            trailLine.buffer[writeIndex].copy(sample);
-            trailLine.lastSamplePos.copy(sample);
-            trailLine.lastSampleMs = nowMs;
-            trailLine.dirty = true;
-            return true;
-        }
-
-        function syncTrailPointsFromBuffer(trailLine) {
-            const { count, start, buffer } = trailLine;
-            trailLine.points.length = count;
-            for (let i = 0; i < count; i++) {
-                const idx = (start + i) % buffer.length;
-                const point = buffer[idx];
-                if (!trailLine.points[i]) {
-                    trailLine.points[i] = point.clone();
-                } else {
-                    trailLine.points[i].copy(point);
-                }
-            }
-            trailLine.curve.points = trailLine.points;
-            // 弧长表的分辨率必须覆盖每个采样点：默认 200 份对于 2000+ 点的
-            // 外行星拖影严重不足，getPointAt 的映射会跳过大量点，
-            // 圆环渲染成虚线。设为「每 2 个采样点一份」，并让 needsUpdate 生效。
-            const want = Math.max(200, count * 2);
-            if (trailLine.curve.arcLengthDivisions !== want) {
-                trailLine.curve.arcLengthDivisions = want;
-            }
-            trailLine.curve.needsUpdate = true;
-            trailLine.curve.updateArcLengths();
-        }
 
         function updatePerfMetrics(nowMs, delta) {
             const frameMs = delta * 1000;
@@ -5301,13 +5118,11 @@ Geoms: --</div>
         function finishCenterSwitch(planet) {
             selectedPlanet = planet;
             lockedPlanet = planet;
-            clearTrails();
             setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
             syncCameraMinDistance();
-            // 切换参考中心后直接预填过去 N 圈的真实相对轨迹，
-            // 拖影即刻完整（旧实现只埋一个起点，外行星要等很久才能攒出一圈）
-            primeTrailHistory();
+            // 拖影是解析条带，切换参考中心后下一帧即按新参考系重算，
+            // 无需任何缓冲清理或历史预填
         }
 
         function centerOnPlanet(planet, animate = true) {
@@ -5584,57 +5399,51 @@ Geoms: --</div>
             if (lockedPlanet && !cameraTransitionActive) {
                 worldGroup.position.set(-lockedPlanet.mesh.position.x, 0, -lockedPlanet.mesh.position.z);
             }
-
+            // === 拖影更新：解析轨道条带 ===
+            // 条带顶点每帧按解析方程重算：P_body(τ) − P_ref(τ)。
+            // 无采样缓冲、无历史积累，任何时刻拖影都是完整的 N 圈真实轨迹。
             if (lockedPlanet && config.showTrails && !cameraTransitionActive) {
-                if (!config.isPaused) {
-                    lockedPlanet.mesh.getWorldPosition(trailRefPos);
-                    trailBodies.forEach(p => {
-                        const trailLine = p.trailLine;
-                        const maxPoints = p.trailLength || 0;
-                        if (!trailLine || !trailLine.mesh) {
-                            return;
-                        }
+                const refIsSun = lockedPlanet === sunObj;
+                const refIsMoon = lockedPlanet === moonObj;
+                const spanOrbits = Math.max(0.02, config.trailOrbits || 1);
+                const thickness = config.orbitThickness * 0.5;
 
-                        if (maxPoints === 0) {
-                            setTrailMeshVisible(trailLine, false);
-                            return;
-                        }
+                trailBodies.forEach(p => {
+                    const tl = p.trailLine;
+                    if (!tl || !tl.mesh) return;
+                    if (p === lockedPlanet) { setTrailMeshVisible(tl, false); return; }
+                    if (p === sunObj && refIsSun) { setTrailMeshVisible(tl, false); return; }
 
-                        p.mesh.getWorldPosition(trailWorldPos);
-                        trailRelativePos.subVectors(trailWorldPos, trailRefPos);
+                    const isMoon = p === moonObj;
+                    const desc = {
+                        radius: isMoon ? p.orbitRadius : (p.distance || 0),
+                        angle0: p.angle || 0,
+                        omega: (p.baseSpeed || 0) * 60,
+                        isMoon,
+                        moonRadius: isMoon ? p.orbitRadius : 0,
+                        moonAngle0: isMoon ? p.angle : 0,
+                        moonOmega: isMoon ? (p.baseSpeed || 0) * 60 : 0,
+                        earthRadius: isMoon && moonParentPlanet ? moonParentPlanet.distance : 0,
+                        earthAngle0: isMoon && moonParentPlanet ? moonParentPlanet.angle : 0,
+                        earthOmega: isMoon && moonParentPlanet ? moonParentPlanet.baseSpeed * 60 : 0,
+                        // 太阳参考系必须显式标记，否则 updateTrailBand 会把
+                        // undefined 当作「非太阳参考系」而读入未定义的参考参数
+                        refIsSun,
+                        refIsMoon,
+                        refRadius: refIsSun ? 0 : (lockedPlanet.distance || 0),
+                        refAngle0: refIsSun ? 0 : (lockedPlanet.angle || 0),
+                        refOmega: refIsSun ? 0 : (lockedPlanet.baseSpeed || 0) * 60,
+                        refEarthRadius: refIsMoon && moonParentPlanet ? moonParentPlanet.distance : 0,
+                        refEarthAngle0: refIsMoon && moonParentPlanet ? moonParentPlanet.angle : 0,
+                        refEarthOmega: refIsMoon && moonParentPlanet ? moonParentPlanet.baseSpeed * 60 : 0,
+                        refMoonRadius: refIsMoon ? (lockedPlanet.orbitRadius || 0) : 0,
+                        refMoonAngle0: refIsMoon ? (lockedPlanet.angle || 0) : 0,
+                        refMoonOmega: refIsMoon ? (lockedPlanet.baseSpeed || 0) * 60 : 0
+                    };
 
-                        const sampled = pushTrailSample(trailLine, trailRelativePos, maxPoints, nowMs);
-                        if (!sampled && !trailLine.dirty) {
-                            if (trailLine.count < 2) {
-                                setTrailMeshVisible(trailLine, false);
-                            }
-                            return;
-                        }
-
-                        if (trailLine.count >= 2) {
-                            syncTrailPointsFromBuffer(trailLine);
-                            trailLine.mesh.geometry.dispose();
-                            // 分段数必须覆盖到每个采样点：外行星一圈 2000+ 点，
-                            // 若管道只取 220 段，插值会跳过大量控制点，
-                            // 圆环在大半径下呈现虚线状锯齿。
-                            // 上限 2400：1 圈的海王星 2356 点全保留；2 圈时点距
-                            // 加倍仍有足够密度。三角形数 = 2400×8×2 ≈ 3.8 万/条，
-                            // 仅外行星达到上限，内行星点数少、自然更省。
-                            const tubularSegments = Math.max(2, Math.min(2400, trailLine.points.length));
-                            trailLine.mesh.geometry = createTrailGeometry(
-                                trailLine.curve,
-                                tubularSegments,
-                                config.orbitThickness * 0.5,
-                                config.trailTubeRadialSegments[config.qualityMode] || config.trailTubeRadialSegments.performance
-                            );
-                            setTrailMeshVisible(trailLine, true);
-                        } else {
-                            setTrailMeshVisible(trailLine, false);
-                        }
-
-                        trailLine.dirty = false;
-                    });
-                }
+                    updateTrailBand(tl.mesh, desc, spanOrbits, thickness);
+                    setTrailMeshVisible(tl, true);
+                });
             } else {
                 trailBodies.forEach(p => {
                     if (p.trailLine && p.trailLine.mesh) {
