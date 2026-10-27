@@ -3887,10 +3887,10 @@ Geoms: --</div>
         // 采样缓冲、不需要历史积累、不需要曲线拟合：
         //
         //   每个天体一条固定分段数的条带（tube），顶点位置每帧由解析方程
-        //   直接重算。滑杆的「圈数」= 条带覆盖的角度跨度（1.0 = 360°）。
-        //   条带的「头部」锚定在天体当前位置，往回铺 N 圈 —— 拿到的是
-        //   精确的真实轨迹，与运行时长无关；打开页面后的几秒里这条轨迹
-        //   由短到长「长出来」（见 trailAge / TRAIL_GROW_SECONDS）。
+        //   直接重算。滑杆的「圈数」= 条带覆盖的角度跨度上限（1.0 = 360°）。
+        //   条带的「头部」锚定在天体当前位置，往回铺「已经走过的那段路」：
+        //   打开页面时长度为零，天体每移动一点，拖尾就从头部往后长一点，
+        //   直到长满所选圈数（见 trailAge）。
         //
         // 渐变沿用「头亮尾淡」：aT = 1 在天体处，0 在最老端（每帧按可见跨度归一化）。
 
@@ -4050,10 +4050,10 @@ Geoms: --</div>
         // 每帧重算一个天体的丝带顶点（时间回推采样）。
         // bodyDesc 描述目标天体与参考中心的解析轨道，每帧调用。任何参考系下
         // 每个条带顶点都是真实轨迹上的点（P_body(τ) − P_ref(τ)），不是近似圆。
-        // ageSec：拖尾已积累的模拟时间 @1x。可见尾部跨度 = min(已走角度, 圈数)，
-        // 未走过的部分塌缩到头部并隐藏 —— 拖尾随运动「慢慢生成」。
+        // ageSimSec：天体在该参考系下已经走过的模拟秒数（暂停时不增长、
+        // 切参考中心清零）。拖尾只覆盖这段真实走过的路，长度随运动累积。
         // spanOrbits: 覆盖圈数上限
-        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius, ageSec) {
+        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius, ageSimSec) {
             const geo = mesh.geometry;
             const posAttr = geo.attributes.position;
             const arr = posAttr.array;
@@ -4083,18 +4083,24 @@ Geoms: --</div>
 
             // 圈数上限对应的回推时长（模拟秒 @1x）
             const maxSpanSec = (Math.PI * 2 * spanOrbits) / absRel;
-            // 可见跨度由「生长进度」主导：打开页面后在 TRAIL_GROW_SECONDS 内
-            // 由零长满所选圈数，之后稳定保持。不再被「天体已走过的模拟时长」
-            // 卡住 —— 1x 速度下走过 1 圈要按分钟计，那样拖尾会短得像个小尾巴。
-            const grow01 = Math.min(1, ((ageSec && ageSec.real) || 0) / TRAIL_GROW_SECONDS);
-            // 缓动：先慢后快的平滑生长（smoothstep），拖尾像被笔刷牵出来
-            const eased = grow01 * grow01 * (3 - 2 * grow01);
-            const visibleSec = maxSpanSec * eased;
-            if (visibleSec < maxSpanSec * 0.02) {
-                // 刚启动：整条隐藏
-                posAttr.needsUpdate = true;
+            // 可见跨度 = 天体自参考系重置以来「真正走过」的模拟时长，
+            // 以圈数上限封顶。拖尾只画已经走过的路：刚打开时长度为零，
+            // 之后随着天体自己移动一段一段地长出来，绝不会自己往前伸。
+            const sweptSec = Math.max(0, ageSimSec || 0);
+            const visibleSec = Math.min(maxSpanSec, sweptSec);
+            if (visibleSec <= maxSpanSec * 1e-4) {
+                // 还没走过路（刚打开 / 刚切参考系）：整条收起，不留任何痕迹 ——
+                // 初始状态就是「没有拖影」。只在第一次真正收拢时改写缓冲。
+                if (!mesh.userData.trailEmpty) {
+                    arr.fill(0);
+                    tAttr.array.fill(0);
+                    tAttr.needsUpdate = true;
+                    posAttr.needsUpdate = true;
+                    mesh.userData.trailEmpty = true;
+                }
                 return;
             }
+            mesh.userData.trailEmpty = false;
             const durationSec = visibleSec;
 
             // 可见段数按「可见时长 / 上限」分配（其余段塌缩隐藏）
@@ -4795,27 +4801,27 @@ Geoms: --</div>
         }
 
         // === 拖尾生命周期 ===
-        // ageSec：拖尾已积累的「真实秒数」（暂停时不增长，切参考中心清零）。
-        // 生长速度与行星无关：任何天体都在 TRAIL_GROW_SECONDS 内长满自己的
-        // 圈数上限 —— 外行星不用像旧「按模拟时间」方案那样干等上百分钟。
-        // 暂停时拖尾冻结（不再生长也不消散），恢复后继续。
-        // 生长时间压到 2.6 秒：保留「拖尾随运动长出来」的动感，但打开页面
-        // 很快就能看到完整彗尾，不用干等 20 多秒。
-        const TRAIL_GROW_SECONDS = 2.6;
+        // 只有一个量：天体在**模拟时间**里走过的秒数（暂停时不增长，
+        // 切参考中心时清零）。可见拖尾长度严格由它决定：
+        //
+        //   可见弧度 = min(2π × 圈数, 相对角速度 × 已走过的模拟秒)
+        //
+        // 也就是说拖尾只会覆盖天体**真的走过**的那段路，绝不会自己向
+        // 后多铺一截。代价是外行星在 1x 下走得慢、拖尾也就长得慢 ——
+        // 想让它快点长满就调高时间速度（20x 时木星约 17 秒长满）。
+        const trailAge = new Map();   // body -> 已走过的模拟秒 @1x
+        // 光带自身动效（流动波、能量脉冲、彗核脉动）的时间基准。
+        // 只在未暂停时前进，这样暂停时整条拖尾连同它的光效一起静止。
+        let trailClockSec = 0;
 
-        const trailAge = new Map();   // body -> { real: 真实秒, sim: 模拟秒 @1x }
-
-        function advanceTrailAge(deltaRealSec, deltaSimSec) {
+        function advanceTrailAge(deltaSimSec) {
             trailBodies.forEach(p => {
-                const a = trailAge.get(p) || { real: 0, sim: 0 };
-                a.real += deltaRealSec;
-                a.sim += deltaSimSec;
-                trailAge.set(p, a);
+                trailAge.set(p, (trailAge.get(p) || 0) + deltaSimSec);
             });
         }
 
         function resetTrailAge() {
-            trailBodies.forEach(p => trailAge.set(p, { real: 0, sim: 0 }));
+            trailBodies.forEach(p => trailAge.set(p, 0));
         }
 
         // === 拖影圈数应用 ===
@@ -5424,10 +5430,10 @@ Geoms: --</div>
             }
 
             if (!config.isPaused) {
-                // 拖尾年龄双轨记录：
-                //   real：真实秒 —— 驱动生长动画（所有天体同速长满，外行星不用干等）
-                //   sim ：模拟秒 —— 行星实际走过的路（低速时拖尾不会超前于运动）
-                advanceTrailAge(delta, delta * config.timeScale);
+                // 拖尾年龄：只记录天体在这个参考系里「真的走过」的模拟秒数
+                advanceTrailAge(delta * config.timeScale);
+                // 光带自带动效的时间基准（暂停时冻结）
+                trailClockSec += delta;
 
                 planets.forEach(p => {
                     // 公转：角度增量由真实轨道周期推导（见 ORBIT_SPEED_K）
@@ -5578,9 +5584,9 @@ Geoms: --</div>
                         pxHalfWidth = Math.max(4.0, Math.min(8.0, 3.6 + bodySize * 0.55));
                     }
                     const halfWidth = pxHalfWidth * thicknessScale;
-                    // 流动光效的时间基准
+                    // 流动光效的时间基准：暂停时用冻结的时间，光带完全静止
                     if (tl.mesh.material.uniforms.uTime) {
-                        tl.mesh.material.uniforms.uTime.value = nowMs * 0.001;
+                        tl.mesh.material.uniforms.uTime.value = trailClockSec;
                     }
                     updateTrailBand(tl.mesh, desc, spanOrbits, halfWidth, trailAge.get(p) || 0);
                     setTrailMeshVisible(tl, true);
