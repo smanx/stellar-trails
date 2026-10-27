@@ -113,7 +113,7 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 
 ### Observing Motion Trails
 - After switching reference center, all celestial bodies display motion trails relative to that center
-- Trail length automatically adjusts based on celestial body distance (distant bodies have longer trails)
+- Trail length is measured in orbits (0–2): 1.0 means the trail covers exactly one full loop of each body's own path relative to the reference frame
 - Adjust trail length and thickness using sliders
 
 ### Viewing Planet Details
@@ -152,8 +152,8 @@ All dependencies are downloaded to the local `libs/` directory. The application 
 - Real-time adjustment of planetary revolution speed
 
 ### Trail Controls
-- **Length**: 0 - 1000, controls number of trail points
-- **Thickness**: 0.1 - 5.0, controls trail line thickness
+- **Length**: 0 – 2 orbits (step 0.05). The value is how many full loops of its own path each body keeps relative to the reference frame; actual point counts differ per body (proportional to orbital circumference) while loop count stays identical
+- **Thickness**: 0.1 – 5.0, controls trail line thickness
 
 ### Display Options
 - **Show Trails**: Toggle trail visibility
@@ -255,6 +255,9 @@ All orbital and rotational data maps to real values:
 | Moon | Radius ratio 0.2726 (Earth × 0.2726 ≈ 0.68), orbital period 27.32 days |
 
 ### Motion Trails (Glossy upgrade)
+- Trail length is measured in **orbits**, not points: the slider sets how many full loops each body keeps relative to the current reference frame (0–2, default 1.0)
+- Every body samples its own path at a fixed arc-length step, so a body's point count is proportional to its orbital circumference (Neptune keeps ~2.4k points per orbit, the Moon ~50), while the **number of preserved loops is identical for all bodies**
+- Arc-length sampling also means trails fill in uniformly at any time speed — outer planets no longer need ages to accumulate a full ring
 - Trails fade and taper along their length: bright and thick at the head (newest sample), thin and dim at the tail
 - Trail colours are desaturated and lifted toward the deep-space palette so they no longer glare against the black background
 - Tube segments scale with sample count, so complex paths (like the Moon's epicycloid seen from the Sun) stay smooth
