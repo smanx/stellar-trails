@@ -3887,18 +3887,21 @@ Geoms: --</div>
         // 采样缓冲、不需要历史积累、不需要曲线拟合：
         //
         //   每个天体一条固定分段数的条带（tube），顶点位置每帧由解析方程
-        //   直接重算。滑杆的「圈数」= 条带覆盖的角度跨度上限（1.0 = 360°）。
-        //   条带的「头部」锚定在天体当前位置，往回铺「已经走过的那段路」：
-        //   打开页面时长度为零，天体每移动一点，拖尾就从头部往后长一点，
-        //   直到长满所选圈数（见 trailAge）。
+        //   直接重算。滑杆的「圈数」= 条带覆盖的角度跨度（1.0 = 360°），
+        //   长度恒定，不随天体快慢或已走路程变化 —— 设成 1 圈就是完整一圈，
+        //   海王星刚走一点点也照样保持整圈，既不会自己伸长也不会缩短。
+        //   条带的「头部」锚定在天体当前位置，往回铺满所选圈数；
+        //   刚打开 / 刚切参考系时用透明度淡入（见 uReveal），几何不参与生长。
         //
-        // 渐变沿用「头亮尾淡」：aT = 1 在天体处，0 在最老端（每帧按可见跨度归一化）。
+        // 渐变沿用「头亮尾淡」：aT = 1 在天体处，0 在最老端（按固定弧长归一化）。
 
         // 拖影的视觉语言：一颗彗星拖出的发光彗尾 —— 一条连续的光带，
         // 而不是串珠虚线、也不是均匀发亮的圆环。
         //   · 横向：窄而炽白的芯 + 宽而柔的晕（天体本色），两端平滑收边
         //   · 纵向：彗头炽亮（带脉动的彗核），亮度按幂次向彗尾衰减，
-        //           最后 18% 完全溶解 —— 老去的部分慢慢消失
+        //           最后 12% 完全溶解 —— 老去的部分慢慢消失。衰减幅度刻意
+        //           留了底（最暗端仍有 22% 亮度），这样设成整圈时尾巴仍然
+        //           一路看得见，不会只剩彗头一小截
         //   · 宽度：贴近天体处收成「颈」，向后鼓起成彗发，再向彗尾收细成一点
         //   · 动效：沿轨迹流动的明暗波 + 一团由尾向头推进的能量脉冲
         // 几何仍按解析轨道每帧重算，截面「始终朝向相机」——从任何视角看
@@ -3922,6 +3925,7 @@ Geoms: --</div>
             uniform float uOpacity;
             uniform float uTime;
             uniform float uPhase;
+            uniform float uReveal;
             varying float vT;
             varying float vSide;
             void main() {
@@ -3929,11 +3933,11 @@ Geoms: --</div>
                 float s = abs(vSide);
 
                 // --- 纵向 ---
-                // 尾端 18% 完全溶解：没有硬切边
-                float tailFade = smoothstep(0.0, 0.18, t);
-                // 主体亮度：彗头炽亮、彗尾渐隐（1.2% → 100%），
-                // 明确是一条拖尾而不是均匀发亮的圆环
-                float body = mix(0.012, 1.0, pow(t, 3.0));
+                // 尾端 12% 溶解：没有硬切边，最老的一小段融进背景
+                float tailFade = smoothstep(0.0, 0.12, t);
+                // 主体亮度：头部最亮、尾部略暗，但整条弧都要看得见 ——
+                // 设定几圈就应当读出几圈，而不是只剩彗头附近一小截
+                float body = mix(0.22, 1.0, pow(t, 1.8));
                 // 彗核：紧贴天体的一团炽热亮斑（轻微脉动，像在呼吸）
                 float head = exp(-pow((1.0 - t) / 0.055, 2.0)) * (0.92 + 0.08 * sin(uTime * 2.6));
                 // 能量流：沿轨迹缓慢流动的明暗波，让光带「活」起来
@@ -3949,7 +3953,7 @@ Geoms: --</div>
                 float edge = smoothstep(1.0, 0.28, s);
                 float across = (core + halo) * edge;
 
-                float a = uOpacity * across * (tailFade * (body * flow + pulse) + head * 1.1);
+                float a = uOpacity * uReveal * across * (tailFade * (body * flow + pulse) + head * 1.1);
                 // 芯偏白、晕保留行星本色 —— 只有最亮的一条线发白
                 vec3 col = mix(uGlow, uCore, clamp(core * 0.45 + head * 0.62, 0.0, 1.0));
                 gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
@@ -3974,7 +3978,8 @@ Geoms: --</div>
                     uCore: { value: core },
                     uOpacity: { value: opacity },
                     uTime: { value: 0 },
-                    uPhase: { value: Math.random() }
+                    uPhase: { value: Math.random() },
+                    uReveal: { value: 0 }
                 },
                 vertexShader: trailVertexShader,
                 fragmentShader: trailFragmentShader,
@@ -4050,28 +4055,31 @@ Geoms: --</div>
         // 每帧重算一个天体的丝带顶点（时间回推采样）。
         // bodyDesc 描述目标天体与参考中心的解析轨道，每帧调用。任何参考系下
         // 每个条带顶点都是真实轨迹上的点（P_body(τ) − P_ref(τ)），不是近似圆。
-        // ageSimSec：天体在该参考系下已经走过的模拟秒数（暂停时不增长、
-        // 切参考中心清零）。拖尾只覆盖这段真实走过的路，长度随运动累积。
-        // spanOrbits: 覆盖圈数上限
-        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius, ageSimSec) {
+        // spanOrbits: 拖尾覆盖的圈数（几何长度恒等于它，不随运动累积变化）
+        function updateTrailBand(mesh, bodyDesc, spanOrbits, baseRadius) {
             const geo = mesh.geometry;
             const posAttr = geo.attributes.position;
             const arr = posAttr.array;
             const segs = TRAIL_MAX_SEGMENTS;
             const cols = TRAIL_WIDTH_COLS;
             const rowLength = cols;
-            // aT 必须是「本次可见弧段」上的归一化参数：0 = 尾端，1 = 头部。
-            // 每帧按 usedSegs 重写，这样生长过程中头部始终是 t=1，
-            // 亮部与彗核永远跟着天体，而不是停在整条 360 段几何的末尾。
-            const tAttr = geo.attributes.aT;
+            // aT（0 = 尾端，1 = 头部）在 createTrailBand 里按固定弧长一次性写入，
+            // 长度恒定所以不需要每帧重算。
 
-            // 相对角速度（玫瑰线频率）：目标与参考的角速度之差。
-            // 月球世界角速度 = 地球角速度 + 本征角速度。
-            let relOmega = bodyDesc.omega;
-            if (bodyDesc.isMoon) relOmega += bodyDesc.earthOmega;
-            if (!bodyDesc.refIsSun) {
-                relOmega = bodyDesc.isMoon
-                    ? (bodyDesc.omega + bodyDesc.earthOmega - bodyDesc.refOmega)
+            // 相对角速度 = 天体绕「当前参考中心」转动的平均角速度。
+            // 「1 圈」= 相对该中心转过 2π，所以圈数在**任何参考系、任何天体**
+            // 上都对应一整圈，长度不再随天体快慢缩水。
+            // 月球要单独处理：它绕母星一圈是 27.3 天，但它绕太阳（或任何
+            // 非母星的中心）一圈和母星同期 —— 用月球自己的本征角速度去除，
+            // 会把月球的拖尾算成只有真实长度的 1/13。
+            let relOmega;
+            if (bodyDesc.isMoon) {
+                relOmega = bodyDesc.refIsParent
+                    ? bodyDesc.moonOmega
+                    : (bodyDesc.earthOmega - (bodyDesc.refIsSun ? 0 : bodyDesc.refOmega));
+            } else {
+                relOmega = bodyDesc.refIsSun
+                    ? bodyDesc.omega
                     : (bodyDesc.omega - bodyDesc.refOmega);
             }
             const absRel = Math.abs(relOmega);
@@ -4081,33 +4089,16 @@ Geoms: --</div>
                 return;
             }
 
-            // 圈数上限对应的回推时长（模拟秒 @1x）
-            const maxSpanSec = (Math.PI * 2 * spanOrbits) / absRel;
-            // 可见跨度 = 天体自参考系重置以来「真正走过」的模拟时长，
-            // 以圈数上限封顶。拖尾只画已经走过的路：刚打开时长度为零，
-            // 之后随着天体自己移动一段一段地长出来，绝不会自己往前伸。
-            const sweptSec = Math.max(0, ageSimSec || 0);
-            const visibleSec = Math.min(maxSpanSec, sweptSec);
-            if (visibleSec <= maxSpanSec * 1e-4) {
-                // 还没走过路（刚打开 / 刚切参考系）：整条收起，不留任何痕迹 ——
-                // 初始状态就是「没有拖影」。只在第一次真正收拢时改写缓冲。
-                if (!mesh.userData.trailEmpty) {
-                    arr.fill(0);
-                    tAttr.array.fill(0);
-                    tAttr.needsUpdate = true;
-                    posAttr.needsUpdate = true;
-                    mesh.userData.trailEmpty = true;
-                }
-                return;
-            }
-            mesh.userData.trailEmpty = false;
-            const durationSec = visibleSec;
+            // 回推时长：滑块圈数对应的**完整**跨度。
+            // 几何长度恒等于这个值 —— 「圈数」是拖尾自己的属性，
+            // 不随天体快慢、也不随它已经走过多少路而变化。
+            // 刚打开 / 刚切换参考系时的「从无到有」由 uniform 淡入完成
+            // （见 uReveal），几何本身不参与生长，因此既不会「尾巴自己
+            // 往后扫」，也不会出现外行星永远长不满一圈的情况。
+            const durationSec = (Math.PI * 2 * spanOrbits) / absRel;
 
-            // 可见段数按「可见时长 / 上限」分配（其余段塌缩隐藏）
-            const usedSegs = Math.max(2, Math.min(segs, Math.ceil(segs * visibleSec / maxSpanSec)));
-
-            for (let i = 0; i <= usedSegs; i++) {
-                const t = i / usedSegs;                       // 0 = 尾（最老），1 = 头
+            for (let i = 0; i <= segs; i++) {
+                const t = i / segs;                       // 0 = 尾（最老），1 = 头
                 const tau = (1 - t) * durationSec;            // 往回的时间（秒 @1x）
 
                 // 目标天体世界位置（@1x 回推）
@@ -4144,7 +4135,7 @@ Geoms: --</div>
 
                 // 条带横截面参考系（沿相对轨迹的解析切向）
                 // 数值微分相邻两段的解析位置得到切向，稳健且通用
-                const eps = durationSec / usedSegs * 0.5 + 1e-6;
+                const eps = durationSec / segs * 0.5 + 1e-6;
                 let tx, tz;
                 {
                     let qx, qz;
@@ -4202,26 +4193,9 @@ Geoms: --</div>
                     arr[idx] = px + rr * side * _tbN.x;
                     arr[idx + 1] = yLift + rr * side * _tbN.y;
                     arr[idx + 2] = pz + rr * side * _tbN.z;
-                    // 归一化弧长：头部恒为 1，尾部恒为 0（随生长变化）
-                    tAttr.array[i * rowLength + j] = t;
                 }
             }
 
-            // 未使用的段塌缩到头部（退化三角形，面积为零），并置 aT=0
-            if (usedSegs < segs) {
-                const hx = arr[(usedSegs * rowLength) * 3];
-                const hy = arr[(usedSegs * rowLength) * 3 + 1];
-                const hz = arr[(usedSegs * rowLength) * 3 + 2];
-                for (let i = usedSegs + 1; i <= segs; i++) {
-                    for (let j = 0; j < cols; j++) {
-                        const idx = (i * rowLength + j);
-                        arr[idx * 3] = hx; arr[idx * 3 + 1] = hy; arr[idx * 3 + 2] = hz;
-                        tAttr.array[idx] = 0;
-                    }
-                }
-            }
-
-            tAttr.needsUpdate = true;
             posAttr.needsUpdate = true;
         }
 
@@ -4801,34 +4775,27 @@ Geoms: --</div>
         }
 
         // === 拖尾生命周期 ===
-        // 只有一个量：天体在**模拟时间**里走过的秒数（暂停时不增长，
-        // 切参考中心时清零）。可见拖尾长度严格由它决定：
+        // 拖尾的**几何长度恒等于滑块圈数** —— 这是拖尾自身的属性，与天体
+        // 走得多快、走了多久都无关。所以「设成 1 圈」就一定是整整一圈，
+        // 内圈外圈一视同仁，不会出现「尾部越走越短」。
         //
-        //   可见弧度 = min(2π × 圈数, 相对角速度 × 已走过的模拟秒)
+        // 唯一的时间过程是**淡入**：刚打开 / 刚切参考系时 uReveal = 0
+        // （完全看不见），随后在 TRAIL_REVEAL_SECONDS 内淡到 1。淡入改的是
+        // 透明度，不改几何，所以既不会有「尾巴自己往后伸长」的怪感，
+        // 也不会让长度短一截。
         //
-        // 也就是说拖尾只会覆盖天体**真的走过**的那段路，绝不会自己向
-        // 后多铺一截。代价是外行星在 1x 下走得慢、拖尾也就长得慢 ——
-        // 想让它快点长满就调高时间速度（20x 时木星约 17 秒长满）。
-        const trailAge = new Map();   // body -> 已走过的模拟秒 @1x
+        // 「一圈」按参考系定义（见 updateTrailBand 里的 relOmega）：绕当前
+        // 参考中心转过 2π。太阳中心下行星是一年；月球在地球中心下是它绕地
+        // 的 27.3 天；月球在太阳中心下则是随地球绕太阳的一圈 —— 不是把它
+        // 的本征角速度当公转角速度用（那样月球拖尾只有真实长度的 1/13）。
+        const TRAIL_REVEAL_SECONDS = 1.2;
+        let trailReveal01 = 0;
         // 光带自身动效（流动波、能量脉冲、彗核脉动）的时间基准。
         // 只在未暂停时前进，这样暂停时整条拖尾连同它的光效一起静止。
         let trailClockSec = 0;
 
-        function advanceTrailAge(deltaSimSec) {
-            trailBodies.forEach(p => {
-                trailAge.set(p, (trailAge.get(p) || 0) + deltaSimSec);
-            });
-        }
-
-        function resetTrailAge() {
-            trailBodies.forEach(p => trailAge.set(p, 0));
-        }
-
-        // === 拖影圈数应用 ===
-        // 条带几何一次性建满最大段数，圈数只影响每帧重算时覆盖的角度跨度，
-        // 因此应用圈数不需要重建几何，也不需要清任何缓冲 —— 下一帧直接生效。
-        function applyTrailOrbits() {
-            // 圈数上限变化即时生效；拖尾年龄保留（已走过的路仍在，只是显示上限变了）
+        function resetTrailReveal() {
+            trailReveal01 = 0;
         }
 
         function setTrailMeshVisible(trailLine, visible) {
@@ -5031,7 +4998,6 @@ Geoms: --</div>
         trailSlider.addEventListener('input', (e) => {
             config.trailOrbits = parseFloat(e.target.value);
             trailValue.textContent = config.trailOrbits.toFixed(2);
-            applyTrailOrbits();
         });
 
         // 拖影粗细控制
@@ -5245,9 +5211,9 @@ Geoms: --</div>
             setCenterViewName(planet);
             showInfoBtn.classList.add('is-visible');
             syncCameraMinDistance();
-            // 相对轨迹随参考系改变，旧拖尾对新参考系无效 —— 年龄清零，
-            // 拖尾在新参考系下随运动重新生成
-            resetTrailAge();
+            // 相对轨迹随参考系改变，旧拖尾对新参考系无效 —— 透明度归零，
+            // 拖尾在新参考系下重新淡入
+            resetTrailReveal();
         }
 
         function centerOnPlanet(planet, animate = true) {
@@ -5430,8 +5396,8 @@ Geoms: --</div>
             }
 
             if (!config.isPaused) {
-                // 拖尾年龄：只记录天体在这个参考系里「真的走过」的模拟秒数
-                advanceTrailAge(delta * config.timeScale);
+                // 拖尾淡入进度（暂停时冻结）
+                trailReveal01 = Math.min(1, trailReveal01 + delta / TRAIL_REVEAL_SECONDS);
                 // 光带自带动效的时间基准（暂停时冻结）
                 trailClockSec += delta;
 
@@ -5561,9 +5527,16 @@ Geoms: --</div>
                         // undefined 当作「非太阳参考系」而读入未定义的参考参数
                         refIsSun,
                         refIsMoon,
+                        // 参考中心 = 月球的母星：此时月球的「一圈」是它绕母星的一圈
+                        refIsParent: isMoon && lockedPlanet === p.parentPlanet,
+                        // 参考中心若是月球，它绕太阳的平均角速度等于母星的角速度
+                        // （baseSpeed 存的是本征角速度，不能直接当参考角速度用）
                         refRadius: refIsSun ? 0 : (lockedPlanet.distance || 0),
                         refAngle0: refIsSun ? 0 : (lockedPlanet.angle || 0),
-                        refOmega: refIsSun ? 0 : (lockedPlanet.baseSpeed || 0) * 60,
+                        refOmega: refIsSun ? 0
+                            : (refIsMoon && moonParentPlanet
+                                ? moonParentPlanet.baseSpeed * 60
+                                : (lockedPlanet.baseSpeed || 0) * 60),
                         refEarthRadius: refIsMoon && moonParentPlanet ? moonParentPlanet.distance : 0,
                         refEarthAngle0: refIsMoon && moonParentPlanet ? moonParentPlanet.angle : 0,
                         refEarthOmega: refIsMoon && moonParentPlanet ? moonParentPlanet.baseSpeed * 60 : 0,
@@ -5588,7 +5561,12 @@ Geoms: --</div>
                     if (tl.mesh.material.uniforms.uTime) {
                         tl.mesh.material.uniforms.uTime.value = trailClockSec;
                     }
-                    updateTrailBand(tl.mesh, desc, spanOrbits, halfWidth, trailAge.get(p) || 0);
+                    // 淡入：smoothstep 让头尾都不生硬
+                    const rv = trailReveal01 * trailReveal01 * (3 - 2 * trailReveal01);
+                    if (tl.mesh.material.uniforms.uReveal) {
+                        tl.mesh.material.uniforms.uReveal.value = rv;
+                    }
+                    updateTrailBand(tl.mesh, desc, spanOrbits, halfWidth);
                     setTrailMeshVisible(tl, true);
                 });
             } else {
@@ -5637,9 +5615,6 @@ Geoms: --</div>
         setCenterViewName(sunObj);
         updateCenterButton('sun');
         syncCameraMinDistance();
-
-        // 按圈数语义初始化所有天体的拖影点数
-        applyTrailOrbits();
 
         // 开始动画
         animate();
